@@ -1,5 +1,5 @@
 # Ensure you are able to connect to the guest hosts from LAN
 # 192.168.122.0/24 is the default network of the guest hosts
-# 
+# Add static route in LAN - 192.168.122.0/24 via eth0 of the mothership 
 sudo iptables -I FORWARD -d 192.168.122.0/24 -m state --state NEW -j ACCEPT
 
