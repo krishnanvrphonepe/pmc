@@ -1,0 +1,9 @@
+#cloud-config
+ssh_pwauth: False
+hostname: trusty6
+fqdn: trusty6.phonepe.int
+users:
+  - name: demouser
+    ssh_authorized_keys:
+       - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDWSxKnWtFUW18woqZ/DTLb0Tv9GEI6r6zYuWZtHLshVLHux1wPwMmYUanuBkBzQODUdncoLaVeanp9SnRkeB04UgVsF1LJON9ca/3pRiXvNImUBN5p2DRSgKBOztocOjFKnHcK1q4oEQf/v6Pnc1bvtJaK0qj+vfNxt1h6xWKlcBTcXA1ZUNbq5oZel9pa311YxxWOL+kB7gpzNdX3MhAWvZAEsBK48sYq1hGLten6gMObgwQjrytS6tfJGd6F7Ybj1LGIKizOy9d2Ne61oMxI1gj8Cq07jRh3P4tSljnCXrqgHsjbvFbTKCd44fb1//cunqVplGfS3jl5TzCj7ti7 krishnan@phonepe
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
