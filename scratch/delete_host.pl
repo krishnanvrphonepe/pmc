@@ -53,6 +53,10 @@ sub GenerateNetworkConfig {
 	my $ip = shift ; 
 	my $f = shift ; 
 	delete $xml_ref->{network}->[0]->{ip}->[0]->{dhcp}->[0]->{host}->{$hostname} ;
+	my @kc = keys %{$xml_ref->{network}->[0]->{ip}->[0]->{dhcp}->[0]->{host}} ;
+	if(! @kc) { 
+		delete $xml_ref->{network}->[0]->{ip}->[0]->{dhcp}->[0]->{host}; 
+	}
 	XMLout( $xml_ref, KeepRoot => 1, NoAttr => 0, OutputFile => "/tmp/default.xml");
 	my $net_start = `virsh net-define /tmp/default.xml && virsh net-destroy default && virsh net-start default` ; 
 	print "NETSTART\n$net_start\n\n"; 
