@@ -67,15 +67,23 @@ type virtExecutorImpl struct {
 	CloudInitLoc   string
 	OriginalImg    string
 	VirtTemplate   string
+	virtconn *libvirt.VirConnection
 }
 
 type virtExecutor struct {
 	tasksLaunched int
+	virtconn *libvirt.VirConnection
 }
 
 func newVirtExecutor() *virtExecutor {
+	conn, err := libvirt.NewVirConnection("qemu:///system")
+	if err != nil {
+		fmt.Println("Connection Error:", err)
+		os.Exit(1)
+	}
 	return &virtExecutor{
 		tasksLaunched:  0,
+		virtconn:  &conn,
 	}
 }
 
@@ -98,6 +106,7 @@ func (mesosexec *virtExecutor) Reregistered(driver mesosexec.ExecutorDriver, sla
 
 func (mesosexec *virtExecutor) Disconnected(mesosexec.ExecutorDriver) {
 	fmt.Println("Executor disconnected.")
+	mesosexec.virtconn.CloseConnection() 
 }
 
 func (mesosexec *virtExecutor) LaunchTask(driver mesosexec.ExecutorDriver, taskInfo *mesos.TaskInfo) {
@@ -114,23 +123,17 @@ func (mesosexec *virtExecutor) LaunchTask(driver mesosexec.ExecutorDriver, taskI
 	//
 	// this is where one would perform the requested task
 	fmt.Println("AM RUNNING THE TASK NOW WITH HOSTNAME=", *hostname)
-	vExec := newVirtExecutorImpl()  
-	domxml := vExec.GenDomXML()
-	fmt.Println("Printing the DOMXML after replace")
-	fmt.Println(domxml)
-	vExec.CreateVM(domxml) 
-	vExec.ListDomains() 
-	_ = vExec.UpdateAttrib() 
 
-	//
+	vExec := newVirtExecutorImpl(mesosexec.virtconn)  
+	vExec.CreateVM() 
 
-	// finish task
-	fmt.Println("Finishing task", taskInfo.GetName())
-	finStatus := &mesos.TaskStatus{
-		TaskId: taskInfo.GetTaskId(),
-		State:  mesos.TaskState_TASK_FINISHED.Enum(),
+
+	vmexists := vExec.CheckVMExists()
+	if vmexists == nil {
+		fmt.Println("VM has been created, exists now") 
+		vExec.UpdateAttrib(1) 
 	}
-	_, err = driver.SendStatusUpdate(finStatus)
+	_, err = driver.SendStatusUpdate(runStatus)
 	if err != nil {
 		fmt.Println("Got error", err)
 	}
@@ -153,9 +156,6 @@ func (mesosexec *virtExecutor) Error(driver mesosexec.ExecutorDriver, err string
 	fmt.Println("Got error message:", err)
 }
 
-func init() {
-	flag.Parse()
-}
 
 func main() {
 	fmt.Println("Starting Example Executor (Go)")
@@ -178,7 +178,7 @@ func main() {
 	driver.Join()
 }
 
-func newVirtExecutorImpl() *virtExecutorImpl {
+func newVirtExecutorImpl(c *libvirt.VirConnection) *virtExecutorImpl {
 	return &virtExecutorImpl{
 		Hostname:       *hostname,
 		MACAddress:     *mac,
@@ -193,22 +193,19 @@ func newVirtExecutorImpl() *virtExecutorImpl {
 		CloudInitLoc:   cloud_init,
 		OriginalImg:    original_source_image,
 		VirtTemplate:   virt_template,
+		virtconn: c,
 	}
 }
 
-func (vE *virtExecutorImpl) UpdateAttrib() error {
-	if err := updateattrib("/etc/mesos-slave/attributes", vE.ComponentType); err != nil {
+func (vE *virtExecutorImpl) UpdateAttrib(u int) error {
+	if err := updateattrib("/etc/mesos-slave/attributes", vE.ComponentType,u); err != nil {
 		fmt.Printf("Failed to Update attribute for ", vE.ComponentType)
 		return err
 	}
 	return nil
 }
-func (vE *virtExecutorImpl) ListDomains() {
-	conn, err := libvirt.NewVirConnection("qemu:///system")
-	if err != nil {
-		fmt.Println("Connection Error:", err)
-		os.Exit(1)
-	}
+func (vE *virtExecutorImpl) CheckVMExists() error {
+	conn := vE.virtconn
 	doms, err := conn.ListAllDomains(libvirt.VIR_CONNECT_LIST_DOMAINS_PERSISTENT)
 	if err != nil {
 		fmt.Println("List Domains:", err)
@@ -217,14 +214,15 @@ func (vE *virtExecutorImpl) ListDomains() {
 	for _, dom := range doms {
 		name, _ := dom.GetName()
 		fmt.Println(name)
+		if name == vE.Hostname {
+			return nil
+		}
 	}
+	return fmt.Errorf("NOT FOUND: %v",vE.Hostname) 
 } 
-func (vE *virtExecutorImpl) CreateVM(domxml string) {
-	conn, err := libvirt.NewVirConnection("qemu:///system")
-	if err != nil {
-		fmt.Println("Connection Error:", err)
-		os.Exit(1)
-	}
+func (vE *virtExecutorImpl) CreateVM() {
+	domxml := vE.GenDomXML()
+	conn := vE.virtconn
 	dom, err := conn.DomainDefineXML(domxml)
 	if err != nil {
 		panic(err)
@@ -351,13 +349,13 @@ func getfields(path string) map[string]string {
 	return nil
 }
 
-func updateattrib(path string, attrib string) error {
+func updateattrib(path string, attrib string, u int) error {
 	if attrib == "" {
 		return nil
 	}
 	kvals := getfields(path)
 	fmt.Println(kvals)
-	kvalsn := updatefield(&kvals, attrib)
+	kvalsn := updatefield(&kvals, attrib, u)
 	fmt.Println(kvalsn, attrib)
 	err := writefields(path, &kvalsn)
 	return err
@@ -377,7 +375,7 @@ func writefields(f string, kvpw *map[string]string) error {
 	return err
 }
 
-func updatefield(kvpp *map[string]string, attrib string) map[string]string {
+func updatefield(kvpp *map[string]string, attrib string, u int) map[string]string {
 	kvp := *kvpp
 	if len(kvp) == 0 {
 		kvp = make(map[string]string)
@@ -394,7 +392,7 @@ func updatefield(kvpp *map[string]string, attrib string) map[string]string {
 		attribval = attribval_i
 
 	}
-	attribval += 1
+	attribval += u
 	kvp[attrib] = strconv.Itoa(attribval)
 	return kvp
 }
@@ -420,7 +418,8 @@ func resolvConfignImages() error {
 func copyIfDNE(config_mesosfile string, config_virtfile string) error {
 	//if a new config is to be passed, it will overwrite existing config
 	if _, err := os.Stat(config_mesosfile); err == nil {
-		cmd := exec.Command("cp", config_mesosfile, config_virtfile)
+		cmd := exec.Command("mv", config_mesosfile, config_virtfile)
+		fmt.Println(cmd) 
 		if err := cmd.Run(); err != nil {
 			cp_err := fmt.Errorf("Got error with File %s -> %s, : %s", config_mesosfile, config_virtfile, os.Stderr)
 			return cp_err
