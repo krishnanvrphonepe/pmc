@@ -19,20 +19,19 @@
 package main
 
 import (
+	"bufio"
+	"flag"
 	"fmt"
-
 	mesosexec "github.com/mesos/mesos-go/executor"
 	mesos "github.com/mesos/mesos-go/mesosproto"
+	"github.com/rgbkrk/libvirt-go"
+	"github.com/satori/go.uuid"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 )
-import "github.com/rgbkrk/libvirt-go"
-import "flag"
-import "io/ioutil"
-import "strings"
-import "strconv"
-import "os/exec"
-import "os"
-import "bufio"
-import "github.com/satori/go.uuid"
 
 var (
 	hostname                    = flag.String("h", "", "VM Hostname")
@@ -54,70 +53,57 @@ var (
 	virt_template               = "/etc/default/PMCLibvirtTemplate.xml"
 )
 
-func resolvConfignImages() error {
-
-	this_id := os.Getuid()
-	fmt.Println("Running as id", this_id)
-	kvs := map[string]string{
-		kernel_mesos:                kernel,
-		cloud_init_mesos:            cloud_init,
-		original_source_image_mesos: original_source_image,
-		virt_template_mesos:         virt_template}
-	for k, v := range kvs {
-		err := copyIfDNE(k, v)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+type virtExecutorImpl struct {
+	Hostname       string
+	MACAddress     string
+	ComponentType  string
+	Fqdn           string
+	Cpu            int
+	Mem            int
+	Local_pmc_dir  string
+	Cloud_local_ds string
+	HostImgLoc     string
+	KernelLoc      string
+	CloudInitLoc   string
+	OriginalImg    string
+	VirtTemplate   string
 }
 
-func copyIfDNE(config_mesosfile string, config_virtfile string) error {
-	//if a new config is to be passed, it will overwrite existing config
-	if _, err := os.Stat(config_mesosfile); err == nil {
-		cmd := exec.Command("cp", config_mesosfile, config_virtfile)
-		if err := cmd.Run(); err != nil {
-			cp_err := fmt.Errorf("Got error with File %s -> %s, : %s", config_mesosfile, config_virtfile, os.Stderr)
-			return cp_err
-		}
+type virtExecutor struct {
+	tasksLaunched int
+}
+
+func newVirtExecutor() *virtExecutor {
+	return &virtExecutor{
+		tasksLaunched:  0,
 	}
-	if _, err := os.Stat(config_virtfile); os.IsNotExist(err) {
-		return err
-	}
-	return nil
 }
 
 func init() {
 	flag.Parse()
+	r_err := resolvConfignImages()
+	if r_err != nil {
+		fmt.Println("Config and image problem:", r_err)
+		os.Exit(1)
+	}
 }
 
-type exampleExecutor struct {
-	tasksLaunched int
-}
-
-func newExampleExecutor() *exampleExecutor {
-	return &exampleExecutor{tasksLaunched: 0}
-}
-
-func (mesosexec *exampleExecutor) Registered(driver mesosexec.ExecutorDriver, execInfo *mesos.ExecutorInfo, fwinfo *mesos.FrameworkInfo, slaveInfo *mesos.SlaveInfo) {
+func (mesosexec *virtExecutor) Registered(driver mesosexec.ExecutorDriver, execInfo *mesos.ExecutorInfo, fwinfo *mesos.FrameworkInfo, slaveInfo *mesos.SlaveInfo) {
 	fmt.Println("Registered Executor on slave ", slaveInfo.GetHostname())
 }
 
-func (mesosexec *exampleExecutor) Reregistered(driver mesosexec.ExecutorDriver, slaveInfo *mesos.SlaveInfo) {
+func (mesosexec *virtExecutor) Reregistered(driver mesosexec.ExecutorDriver, slaveInfo *mesos.SlaveInfo) {
 	fmt.Println("Re-registered Executor on slave ", slaveInfo.GetHostname())
 }
 
-func (mesosexec *exampleExecutor) Disconnected(mesosexec.ExecutorDriver) {
+func (mesosexec *virtExecutor) Disconnected(mesosexec.ExecutorDriver) {
 	fmt.Println("Executor disconnected.")
 }
 
-func (mesosexec *exampleExecutor) LaunchTask(driver mesosexec.ExecutorDriver, taskInfo *mesos.TaskInfo) {
+func (mesosexec *virtExecutor) LaunchTask(driver mesosexec.ExecutorDriver, taskInfo *mesos.TaskInfo) {
 	fmt.Printf("Launching task %v with data [%#x]\n", taskInfo.GetName(), taskInfo.Data)
 
-	runStatus := &mesos.TaskStatus{
-		TaskId: taskInfo.GetTaskId(),
-		State:  mesos.TaskState_TASK_RUNNING.Enum(),
-	}
+	runStatus := &mesos.TaskStatus{ TaskId: taskInfo.GetTaskId(), State:  mesos.TaskState_TASK_RUNNING.Enum(), }
 	_, err := driver.SendStatusUpdate(runStatus)
 	if err != nil {
 		fmt.Println("Got error", err)
@@ -128,41 +114,15 @@ func (mesosexec *exampleExecutor) LaunchTask(driver mesosexec.ExecutorDriver, ta
 	//
 	// this is where one would perform the requested task
 	fmt.Println("AM RUNNING THE TASK NOW WITH HOSTNAME=", *hostname)
-	r_err := resolvConfignImages()
-	if r_err != nil {
-		fmt.Println("Config and image problem:", r_err)
-		os.Exit(1)
-	}
-	xml := GenXMLForDom()
-	domxml := GenDomXML(xml)
+	vExec := newVirtExecutorImpl()  
+	domxml := vExec.GenDomXML()
 	fmt.Println("Printing the DOMXML after replace")
 	fmt.Println(domxml)
-	conn, err := libvirt.NewVirConnection("qemu:///system")
-	if err != nil {
-		fmt.Println("Connection Error:", err)
-		os.Exit(1)
-	}
+	vExec.CreateVM(domxml) 
+	vExec.ListDomains() 
+	_ = vExec.UpdateAttrib() 
 
-	doms, err := conn.ListAllDomains(libvirt.VIR_CONNECT_LIST_DOMAINS_PERSISTENT)
-	if err != nil {
-		fmt.Println("List Domains:", err)
-		os.Exit(0)
-	}
-	for _, dom := range doms {
-		name, _ := dom.GetName()
-		fmt.Println(name)
-	}
-	dom, err := conn.DomainDefineXML(domxml)
-	if err != nil {
-		panic(err)
-	}
-	if err := dom.Create(); err != nil {
-		fmt.Printf("Failed to create domain")
-	}
 	//
-	if err := updateattrib("/etc/mesos-slave/attributes", *component_type); err != nil {
-		fmt.Printf("Failed to Update attribute for ", *component_type)
-	}
 
 	// finish task
 	fmt.Println("Finishing task", taskInfo.GetName())
@@ -177,19 +137,19 @@ func (mesosexec *exampleExecutor) LaunchTask(driver mesosexec.ExecutorDriver, ta
 	fmt.Println("Task finished", taskInfo.GetName())
 }
 
-func (mesosexec *exampleExecutor) KillTask(mesosexec.ExecutorDriver, *mesos.TaskID) {
+func (mesosexec *virtExecutor) KillTask(mesosexec.ExecutorDriver, *mesos.TaskID) {
 	fmt.Println("Kill task")
 }
 
-func (mesosexec *exampleExecutor) FrameworkMessage(driver mesosexec.ExecutorDriver, msg string) {
+func (mesosexec *virtExecutor) FrameworkMessage(driver mesosexec.ExecutorDriver, msg string) {
 	fmt.Println("Got framework message: ", msg)
 }
 
-func (mesosexec *exampleExecutor) Shutdown(mesosexec.ExecutorDriver) {
+func (mesosexec *virtExecutor) Shutdown(mesosexec.ExecutorDriver) {
 	fmt.Println("Shutting down the executor")
 }
 
-func (mesosexec *exampleExecutor) Error(driver mesosexec.ExecutorDriver, err string) {
+func (mesosexec *virtExecutor) Error(driver mesosexec.ExecutorDriver, err string) {
 	fmt.Println("Got error message:", err)
 }
 
@@ -201,7 +161,7 @@ func main() {
 	fmt.Println("Starting Example Executor (Go)")
 
 	dconfig := mesosexec.DriverConfig{
-		Executor: newExampleExecutor(),
+		Executor: newVirtExecutor(),
 	}
 	driver, err := mesosexec.NewMesosExecutorDriver(dconfig)
 
@@ -218,29 +178,88 @@ func main() {
 	driver.Join()
 }
 
-func GenDomXML(xml string) string {
-	cloud_init_img := GenCloudInitConfig()
-	host_img := GenHostImg()
-	fmt.Println(cloud_init_img)
-	xml = strings.Replace(xml, "__PMC__HOSTNAME__", *hostname, 1)
+func newVirtExecutorImpl() *virtExecutorImpl {
+	return &virtExecutorImpl{
+		Hostname:       *hostname,
+		MACAddress:     *mac,
+		ComponentType:  *component_type,
+		Fqdn:           *fqdn,
+		Cpu:            *cpu,
+		Mem:            *mem,
+		Local_pmc_dir:  local_pmc_dir,
+		Cloud_local_ds: cloud_local_ds,
+		HostImgLoc:     host_image_location,
+		KernelLoc:      kernel,
+		CloudInitLoc:   cloud_init,
+		OriginalImg:    original_source_image,
+		VirtTemplate:   virt_template,
+	}
+}
+
+func (vE *virtExecutorImpl) UpdateAttrib() error {
+	if err := updateattrib("/etc/mesos-slave/attributes", vE.ComponentType); err != nil {
+		fmt.Printf("Failed to Update attribute for ", vE.ComponentType)
+		return err
+	}
+	return nil
+}
+func (vE *virtExecutorImpl) ListDomains() {
+	conn, err := libvirt.NewVirConnection("qemu:///system")
+	if err != nil {
+		fmt.Println("Connection Error:", err)
+		os.Exit(1)
+	}
+	doms, err := conn.ListAllDomains(libvirt.VIR_CONNECT_LIST_DOMAINS_PERSISTENT)
+	if err != nil {
+		fmt.Println("List Domains:", err)
+		os.Exit(0)
+	}
+	for _, dom := range doms {
+		name, _ := dom.GetName()
+		fmt.Println(name)
+	}
+} 
+func (vE *virtExecutorImpl) CreateVM(domxml string) {
+	conn, err := libvirt.NewVirConnection("qemu:///system")
+	if err != nil {
+		fmt.Println("Connection Error:", err)
+		os.Exit(1)
+	}
+	dom, err := conn.DomainDefineXML(domxml)
+	if err != nil {
+		panic(err)
+	}
+	if err := dom.Create(); err != nil {
+		fmt.Printf("Failed to create domain")
+		os.Exit(1)
+	}
+} 
+
+func (vE *virtExecutorImpl) GenDomXML() string {
+	xml := GenXMLForDom(vE.VirtTemplate) 
+	xml = strings.Replace(xml, "__PMC__HOSTNAME__", vE.Hostname, 1)
 	uuid := fmt.Sprintf("%s", uuid.NewV4())
 	xml = strings.Replace(xml, "__PMC__UUID__", uuid, 1)
-	mem := getMem()
+	mem := getMem(vE.Mem)
 	xml = strings.Replace(xml, "__PMC__MEMORY__", mem, 2)
-	xml = strings.Replace(xml, "__PMC__VCPU__", strconv.Itoa(*cpu), 1)
-	xml = strings.Replace(xml, "__PMC__KERNEL__", kernel, 1)
-	//cloud_init_img := GenCloudInitConfig(*hostname)
+	xml = strings.Replace(xml, "__PMC__VCPU__", strconv.Itoa(vE.Cpu), 1)
+	xml = strings.Replace(xml, "__PMC__KERNEL__", vE.KernelLoc, 1)
+
+	cloud_init_img := vE.GenCloudInitConfig()
 	xml = strings.Replace(xml, "__PMC__CLOUDINITIMAGE__", cloud_init_img, 1)
+
+	host_img := vE.GenHostImg()
 	xml = strings.Replace(xml, "__PMC__HOSTIMAGE__", host_img, 1)
-	xml = strings.Replace(xml, "__PMC__MAC__", *mac, 1)
+
+	xml = strings.Replace(xml, "__PMC__MAC__", vE.MACAddress, 1)
 	return xml
 
 }
 
-func GenHostImg() string {
-	image_loc := fmt.Sprintf("%s/%s.img", host_image_location, *hostname)
+func (vE *virtExecutorImpl) GenHostImg() string {
+	image_loc := fmt.Sprintf("%s/%s.img", vE.HostImgLoc, vE.Hostname)
 	Removefile(image_loc)
-	cmd := exec.Command("cp", original_source_image, image_loc)
+	cmd := exec.Command("cp", vE.OriginalImg, image_loc)
 	if err := cmd.Run(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -248,18 +267,18 @@ func GenHostImg() string {
 	return image_loc
 }
 
-func GenCloudInitConfig() string {
-	dat, err := ioutil.ReadFile(cloud_init)
+func (vE *virtExecutorImpl) GenCloudInitConfig() string {
+	dat, err := ioutil.ReadFile(vE.CloudInitLoc)
 	if err != nil {
-		fmt.Println("Error Reading cloud init file", cloud_init, err)
+		fmt.Println("Error Reading cloud init file", vE.CloudInitLoc, err)
 		os.Exit(1)
 	}
 	cloud_init_yaml := string(dat)
-	cloud_init_yaml = strings.Replace(cloud_init_yaml, "__HOSTNAME__", *hostname, 1)
-	cloud_init_yaml = strings.Replace(cloud_init_yaml, "__FQDN__", *fqdn, 1)
+	cloud_init_yaml = strings.Replace(cloud_init_yaml, "__HOSTNAME__", vE.Hostname, 1)
+	cloud_init_yaml = strings.Replace(cloud_init_yaml, "__FQDN__", vE.Fqdn, 1)
 	d1 := []byte(cloud_init_yaml)
-	ci_input := fmt.Sprintf("%s/%s", local_pmc_dir, *hostname)
-	ci_input_img := fmt.Sprintf("%s/%s.img", local_pmc_dir, *hostname)
+	ci_input := fmt.Sprintf("%s/%s", vE.Local_pmc_dir, vE.Hostname)
+	ci_input_img := fmt.Sprintf("%s/%s.img", vE.Local_pmc_dir, vE.Hostname)
 	Removefile(ci_input)
 	Removefile(ci_input_img)
 	err = ioutil.WriteFile(ci_input, d1, 0644)
@@ -267,7 +286,7 @@ func GenCloudInitConfig() string {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	cmd := exec.Command(cloud_local_ds, ci_input_img, ci_input)
+	cmd := exec.Command(vE.Cloud_local_ds, ci_input_img, ci_input)
 	if err := cmd.Run(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -286,11 +305,11 @@ func Removefile(f string) {
 	}
 }
 
-func getMem() string {
-	m := *mem * 1024 * 1024
+func getMem(mem int) string {
+	m := mem * 1024 * 1024
 	return strconv.Itoa(m)
 }
-func GenXMLForDom() string {
+func GenXMLForDom(virt_template string) string {
 	dat, err := ioutil.ReadFile(virt_template)
 	if err != nil {
 		fmt.Println(err)
@@ -379,3 +398,37 @@ func updatefield(kvpp *map[string]string, attrib string) map[string]string {
 	kvp[attrib] = strconv.Itoa(attribval)
 	return kvp
 }
+
+func resolvConfignImages() error {
+
+	this_id := os.Getuid()
+	fmt.Println("Running as id", this_id)
+	kvs := map[string]string{
+		kernel_mesos:                kernel,
+		cloud_init_mesos:            cloud_init,
+		original_source_image_mesos: original_source_image,
+		virt_template_mesos:         virt_template}
+	for k, v := range kvs {
+		err := copyIfDNE(k, v)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyIfDNE(config_mesosfile string, config_virtfile string) error {
+	//if a new config is to be passed, it will overwrite existing config
+	if _, err := os.Stat(config_mesosfile); err == nil {
+		cmd := exec.Command("cp", config_mesosfile, config_virtfile)
+		if err := cmd.Run(); err != nil {
+			cp_err := fmt.Errorf("Got error with File %s -> %s, : %s", config_mesosfile, config_virtfile, os.Stderr)
+			return cp_err
+		}
+	}
+	if _, err := os.Stat(config_virtfile); os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
