@@ -83,7 +83,7 @@ func main() {
 	// Framework
 	fwinfo := &mesos.FrameworkInfo{
 		User: proto.String("root"), // Mesos-go will fill in user.
-		Name: proto.String("Test Framework (Go)"),
+		Name: proto.String("PMC Framework (Go)"),
 	}
 
 	// Scheduler Driver

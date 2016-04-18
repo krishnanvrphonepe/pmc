@@ -38,8 +38,8 @@ var (
 	mac                         = flag.String("mac", "52:54:00:a8:fe:69", "MAC Address")
 	component_type              = flag.String("ct", "", "Component Type")
 	fqdn                        = flag.String("f", "phonepe.int", "FQDN")
-	cpu                         = flag.Int("c", 1, "VCPUs")
-	mem                         = flag.Int("m", 1, "Mem")
+	cpu                         = flag.Int("C", 1, "VCPUs")
+	mem                         = flag.Int("M", 1, "Mem")
 	local_pmc_dir               = "/var/local/pmc"
 	cloud_local_ds              = "/usr/bin/cloud-localds"
 	host_image_location         = "/var/lib/libvirt/images"
