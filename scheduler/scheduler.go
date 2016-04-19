@@ -22,7 +22,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"strconv"
 	//"time"
-//	"os"
+	//"os"
 	"fmt"
 
 	log "github.com/golang/glog"
@@ -114,55 +114,13 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	return
 }
 
-/*
-func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offers []*mesos.Offer) {
-	logOffers(offers)
-	fmt.Printf("%+v\n",driver)
-	os.Exit(1)
-
-	for _, offer := range offers {
-		remainingCpus := getOfferCpu(offer)
-		remainingMems := getOfferMem(offer)
-
-		var tasks []*mesos.TaskInfo
-		if sched.cpuPerTask <= remainingCpus && sched.memPerTask <= remainingMems {
-
-			sched.tasksLaunched++
-
-			fmt.Println("TASKS LAUNCHED=",sched.tasksLaunched)
-			if(sched.tasksLaunched > sched.totalTasks) {
-				time.Sleep(100)
-				break
-			}
-
-			taskId := &mesos.TaskID{
-				Value: proto.String(strconv.Itoa(sched.tasksLaunched)),
-			}
-
-			task := &mesos.TaskInfo{
-				Name:     proto.String("kvm-"+taskId.GetValue()),
-				TaskId:   taskId,
-				SlaveId:  offer.SlaveId,
-				Executor: sched.executor,
-				Resources: []*mesos.Resource{
-					util.NewScalarResource("cpus", sched.cpuPerTask),
-					util.NewScalarResource("mem", sched.memPerTask),
-				},
-			}
-			log.Infof("Prepared task: %s with offer %s for launch\n", task.GetName(), offer.Id.GetValue())
-
-			tasks = append(tasks, task)
-			remainingCpus -= sched.cpuPerTask
-			remainingMems -= sched.memPerTask
-		}
-		log.Infoln("Launching ", len(tasks), "tasks for offer", offer.Id.GetValue())
-		driver.LaunchTasks([]*mesos.OfferID{offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
-	}
-	return
-}
-*/
 func (sched *ExampleScheduler) StatusUpdate(driver sched.SchedulerDriver, status *mesos.TaskStatus) {
 	log.Infoln("Status update: task", status.TaskId.GetValue(), " is in state ", status.State.Enum().String())
+	if "TASK_RUNNING" == status.State.Enum().String() {
+		fmt.Println(sched.hostname,": has been started Succesfully, exiting")
+		//os.Exit(0) 
+	}
+		
 }
 
 func (sched *ExampleScheduler) OfferRescinded(s sched.SchedulerDriver, id *mesos.OfferID) {

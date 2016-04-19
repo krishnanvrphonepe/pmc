@@ -37,7 +37,6 @@ const (
 	CPUS_PER_TASK       = 1
 	MEM_PER_TASK        = 1024
 	defaultArtifactPort = 12345
-	defaultImage        = "http://www.gabrielhartmann.com/Things/Plants/i-W2N2Rxp/0/O/DSCF6636.jpg"
 )
 
 var (
@@ -48,7 +47,7 @@ var (
 	taskCount    = flag.String("task-count", "1", "Total task count to run.")
 	hostname     = flag.String("h", "", "hostname")
 	mac          = flag.String("mac", "", "mac")
-	comp_type          = flag.String("ct", "", "Component-Type")
+	comp_type    = flag.String("ct", "", "Component-Type")
 )
 
 func init() {
