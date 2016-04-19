@@ -90,7 +90,7 @@ sub UpdateQ {
 
 	my $client = Beanstalk::Client->new( { server => $server, default_tube => $tube, }) or die "$!\n";
 
-	my $job = $client->put( {}, 'host='.$data->{hostname},
+	my $job = $client->put( {}, 'hostname='.$data->{hostname},
 	                            'ip='.$data->{ip},
 				    'mac='. $data->{mac},
 				    'cpu='.$data->{cpu},
