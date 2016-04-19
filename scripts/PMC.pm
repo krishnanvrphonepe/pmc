@@ -133,8 +133,11 @@ sub GenerateNetworkConfig {
 	print F "$ip $hn\n"; 
 	close F; 
 	UpdateDHCPConf($mac,$ip,$hn,'ADD') ; 
-	my $reload = `pkill dnsmasq && /usr/sbin/dnsmasq -C /etc/default/dnsmasq.conf` ; 
-	print Dumper $reload; 
+	my $dnsmasq_pid = `cat /var/run/dnsmasq.pid`; 
+	chomp $dnsmasq_pid ;
+	kill HUP => $dnsmasq_pid;
+	print "Completed DNS Restart \n"; 
+	#print Dumper $reload; 
 } 
 
 sub UpdateDHCPConf {
