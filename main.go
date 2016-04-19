@@ -45,9 +45,10 @@ var (
 	hostname     = flag.String("h", "", "hostname")
 	mac          = flag.String("mac", "", "mac")
 	comp_type    = flag.String("ct", "", "Component-Type")
-	cpu    = flag.Float64("cpu", 1, "CPU Count")
-	mem    = flag.Float64("mem", 1024, "Mem Count")
-	uri string
+	qep          = flag.String("q", "", "Q Endpoint")
+	cpu          = flag.Float64("cpu", 1, "CPU Count")
+	mem          = flag.Float64("mem", 1024, "Mem Count")
+	uri          string
 )
 
 func init() {
@@ -57,25 +58,32 @@ func init() {
 func main() {
 
 	// Start HTTP server hosting executor binary
-	if !(*hostname != "" && *mac != "") {
-		fmt.Println("Both -h <hostname> & -mac <MAC> needs to be defined")
-		os.Exit(1)
-	}
 	uri = ServeExecutorArtifact(*address, *artifactPort, *executorPath)
 
+	// Handle Cmd Line args if Any
 	vm_input := NewVMInputter(*hostname, *mac, *mem, *cpu, *executorPath, *comp_type)
 	if vm_input != nil {
-		vm_input.CreateAndRunMesosTask(uri) 
+		vm_input.CreateAndRunMesosTask(uri)
 	} else {
+		fmt.Println("This is going to be a noop", vm_input)
 	}
-		fmt.Println("This is going to be a noop",vm_input) 
+	if *qep != "" {
+		fmt.Println("QEP=", *qep)
+		for { // endless loop
+			vm_input = FetchFromQ(*qep)
+			os.Exit(0) 
+			if vm_input != nil {
+				vm_input.CreateAndRunMesosTask(uri)
+			}
+		}
+	}
 }
 
 func (v *VMInput) CreateAndRunMesosTask(uri string) {
 	// Executor
-	exec := prepareExecutorInfo(uri, getExecutorCmd(v.executor),&v.hostname , &v.mac)
+	exec := prepareExecutorInfo(uri, getExecutorCmd(v.executor), &v.hostname, &v.mac)
 
-	scheduler := NewExampleScheduler(exec,  v.cpu, v.mem, &v.hostname, &v.mac, &v.comp_type)
+	scheduler := NewExampleScheduler(exec, v.cpu, v.mem, &v.hostname, &v.mac, &v.comp_type)
 
 	// Framework
 	fwinfo := &mesos.FrameworkInfo{
