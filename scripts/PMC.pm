@@ -41,12 +41,12 @@ sub GetRange {
 
 sub CheckIPFree {
 	my $ip = shift ; 
-	my $ping_ok = CheckPing($ip) ; 
-	print "PINGOK=$ping_ok\n"; 
-	return 0 if($ping_ok) ; 
 	my $dns_ok = CheckDNS($ip) ; 
 	print "DNSOK = $dns_ok\n"; 
 	return 0 if($dns_ok) ;
+	my $ping_ok = CheckPing($ip) ; 
+	print "PINGOK=$ping_ok\n"; 
+	return 0 if($ping_ok) ; 
 	return 1 ;
 
 }
