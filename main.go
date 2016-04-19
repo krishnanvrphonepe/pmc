@@ -21,9 +21,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net"
-	"os"
-	"strconv"
 	"github.com/gogo/protobuf/proto"
 	log "github.com/golang/glog"
 	. "github.com/krishnanvrphonepe/pmc/scheduler"
@@ -31,11 +28,11 @@ import (
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	util "github.com/mesos/mesos-go/mesosutil"
 	sched "github.com/mesos/mesos-go/scheduler"
+	"net"
+	"os"
 )
 
 const (
-	CPUS_PER_TASK       = 1
-	MEM_PER_TASK        = 1024
 	defaultArtifactPort = 12345
 )
 
@@ -48,6 +45,9 @@ var (
 	hostname     = flag.String("h", "", "hostname")
 	mac          = flag.String("mac", "", "mac")
 	comp_type    = flag.String("ct", "", "Component-Type")
+	cpu    = flag.Float64("cpu", 1, "CPU Count")
+	mem    = flag.Float64("mem", 1024, "Mem Count")
+	uri string
 )
 
 func init() {
@@ -61,23 +61,21 @@ func main() {
 		fmt.Println("Both -h <hostname> & -mac <MAC> needs to be defined")
 		os.Exit(1)
 	}
-	uri := ServeExecutorArtifact(*address, *artifactPort, *executorPath)
+	uri = ServeExecutorArtifact(*address, *artifactPort, *executorPath)
 
+	vm_input := NewVMInputter(*hostname, *mac, *mem, *cpu, *executorPath, *comp_type)
+	if vm_input != nil {
+		vm_input.CreateAndRunMesosTask(uri) 
+	} else {
+	}
+		fmt.Println("This is going to be a noop",vm_input) 
+}
+
+func (v *VMInput) CreateAndRunMesosTask(uri string) {
 	// Executor
-	exec := prepareExecutorInfo(uri, getExecutorCmd(*executorPath),hostname,mac)
+	exec := prepareExecutorInfo(uri, getExecutorCmd(v.executor),&v.hostname , &v.mac)
 
-	// Scheduler
-	numTasks, err := strconv.Atoi(*taskCount)
-	if err != nil {
-		log.Fatalf("Failed to convert '%v' to an integer with error: %v\n", taskCount, err)
-		os.Exit(-1)
-	}
-
-	scheduler := NewExampleScheduler(exec, numTasks, CPUS_PER_TASK, MEM_PER_TASK,hostname,mac,comp_type)
-	if err != nil {
-		log.Fatalf("Failed to create scheduler with error: %v\n", err)
-		os.Exit(-2)
-	}
+	scheduler := NewExampleScheduler(exec,  v.cpu, v.mem, &v.hostname, &v.mac, &v.comp_type)
 
 	// Framework
 	fwinfo := &mesos.FrameworkInfo{
@@ -115,7 +113,7 @@ func prepareExecutorInfo(uri string, cmd string, hn *string, mac *string) *mesos
 		},
 	}
 	virt_cmd := "./virtmesos -h " + *hn + " -mac " + *mac
-	fmt.Println("Command to be exec: ",virt_cmd) 
+	fmt.Println("Command to be exec: ", virt_cmd)
 	return &mesos.ExecutorInfo{
 		ExecutorId: util.NewExecutorID(*hn),
 		Name:       proto.String("kvm"),

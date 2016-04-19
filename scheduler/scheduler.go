@@ -43,12 +43,11 @@ type ExampleScheduler struct {
 	comp_type     string
 }
 
-func NewExampleScheduler(exec *mesos.ExecutorInfo, taskCount int, cpuPerTask float64, memPerTask float64, hn *string, mac *string, comp_type *string) *ExampleScheduler {
+func NewExampleScheduler(exec *mesos.ExecutorInfo,  cpuPerTask float64, memPerTask float64, hn *string, mac *string, comp_type *string) *ExampleScheduler {
 	return &ExampleScheduler{
 		executor:      exec,
 		tasksLaunched: 0,
 		tasksFinished: 0,
-		totalTasks:    taskCount,
 		cpuPerTask:    cpuPerTask,
 		memPerTask:    memPerTask,
 		hostname:      *hn,
