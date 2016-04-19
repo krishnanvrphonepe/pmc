@@ -95,7 +95,8 @@ sub UpdateQ {
 				    'mac='. $data->{mac},
 				    'cpu='.$data->{cpu},
 				    'mem='.$data->{mem},
-				    'ct='.$data->{ct}
+				    'comp_type='.$data->{comp_type},
+				    'executor='.$data->{executor}
 				    ) ; 
 }
 sub GetMemory {

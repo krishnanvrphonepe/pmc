@@ -11,8 +11,10 @@ use YAML::Syck;
 my $hostname = shift; 
 my $ct = shift; 
 my $vlan = shift  ; 
+my $q = shift  ; 
 my $size = shift; 
-die __FILE__." <hostname> <ct> <vlan> [size]\n" if !(defined $vlan && defined $hostname && defined $ct ) ; 
+my $exr = shift; 
+die __FILE__." <hostname> <ct> <vlan> <q> [size] [executor]\n" if !(defined $vlan && defined $hostname && defined $ct && defined $q) ; 
 my $sizef = PMC::VerifyValidSize($size) ; 
 die "Invalid size\n" if(!$sizef) ;
 my $host_ip = PMC::GetFreeIP($vlan);
@@ -25,8 +27,9 @@ $qdata{mac} = $mac;
 $qdata{ip} = $host_ip ; 
 $qdata{cpu} = PMC::GetCPU($size)  ;
 $qdata{mem} = PMC::GetMemory($size) ;
-$qdata{ct} = $ct ;
+$qdata{comp_type} = $ct ;
+$qdata{executor} = $exr ;
 
 print Dumper \%qdata; 
 
-PMC::UpdateQ("localhost",\%qdata,"dnsmasq") ; 
+PMC::UpdateQ($q,\%qdata,"dnsmasq") ; 

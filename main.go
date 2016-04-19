@@ -70,10 +70,11 @@ func main() {
 	if *qep != "" {
 		fmt.Println("QEP=", *qep)
 		for { // endless loop
-			vm_input = FetchFromQ(*qep)
-			os.Exit(0) 
-			if vm_input != nil {
-				vm_input.CreateAndRunMesosTask(uri)
+			vm_inputq,id := FetchFromQ(*qep)
+			fmt.Println("ID=",id) 
+			if vm_inputq != nil {
+				vm_inputq.CreateAndRunMesosTask(uri)
+				//DeleteFromQ(*qep,id) 
 			}
 		}
 	}
@@ -88,7 +89,7 @@ func (v *VMInput) CreateAndRunMesosTask(uri string) {
 	// Framework
 	fwinfo := &mesos.FrameworkInfo{
 		User: proto.String("root"), // Mesos-go will fill in user.
-		Name: proto.String("PMC Framework (Go)"),
+		Name: proto.String("New PMC Framework (Go)"),
 	}
 
 	// Scheduler Driver

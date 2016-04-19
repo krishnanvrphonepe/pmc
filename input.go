@@ -23,14 +23,23 @@ const (
 	MEM_PER_TASK  = 1024
 )
 
-func FetchFromQ(q string) *VMInput {
+func DeleteFromQ(q string,id uint64) {
+	conn, e := beanstalk.Dial("tcp", q)
+	defer conn.Close()
+	if e != nil {
+		log.Fatal(e)
+	}
+	e = conn.Delete(id) 
+}
+
+func FetchFromQ(q string) (*VMInput,uint64) {
 	conn, e := beanstalk.Dial("tcp", q)
 	defer conn.Close()
 	if e != nil {
 		log.Fatal(e)
 	}
 	tubeSet := beanstalk.NewTubeSet(conn, "mesos")
-	_, body, err := tubeSet.Reserve(10 * time.Hour)
+	id, body, err := tubeSet.Reserve(10 * time.Hour)
 	if err != nil {
 		panic(err)
 	}
@@ -47,6 +56,7 @@ func FetchFromQ(q string) *VMInput {
 			
 		kv := strings.Split(m, "=")
 		//fmt.Println("K=",kv[0],"V=",kv[1]) 
+		v := kv[1]
 		switch kv[0] {
 		case "hostname":
 			ret.hostname = kv[1]
@@ -57,15 +67,13 @@ func FetchFromQ(q string) *VMInput {
 		case "comp_type":
 			ret.comp_type = kv[1]
 		case "cpu":
-			ret.cpu = strconv.Atoi(kv[1])
-		fmt.Println("K=",kv[0],"V=",kv[1]) 
+			ret.cpu,err =  strconv.ParseFloat(v, 64)
 		case "mem":
-			ret.mem = float64(strconv.Atoi(kv[1]))
-		fmt.Println("K=",kv[0],"V=",kv[1]) 
+			ret.mem,err =  strconv.ParseFloat(v, 64)
 		}
 	}
 	fmt.Printf("PRINTING THE STRUCT %+v",ret)
-	return &ret
+	return &ret,id
 
 }
 
