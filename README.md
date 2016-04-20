@@ -41,7 +41,7 @@ o In order that VMs of a specific component type don't all land on the same bare
 
 ```sh
 $ cat /etc/mesos-slave/attributes 
-vt_enabled:1,ct_test:4
+vt_enabled:1;ct_test:4
 ```
 which means, there exist 4 VMs of the type c_test on this mesos slave, which is a baremetal. 
 
