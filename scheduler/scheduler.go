@@ -21,9 +21,11 @@ package scheduler
 import (
 	"github.com/gogo/protobuf/proto"
 	"strconv"
-	//"time"
+	"strings"
+	"time"
 	//"os"
 	"fmt"
+	"github.com/kr/beanstalk"
 
 	log "github.com/golang/glog"
 	mesos "github.com/mesos/mesos-go/mesosproto"
@@ -32,27 +34,102 @@ import (
 )
 
 type ExampleScheduler struct {
-	executor      *mesos.ExecutorInfo
 	tasksLaunched int
 	tasksFinished int
 	totalTasks    int
-	cpuPerTask    float64
-	memPerTask    float64
-	hostname      string
-	mac           string
-	comp_type     string
+	q             string
+	uri           string
 }
 
-func NewExampleScheduler(exec *mesos.ExecutorInfo,  cpuPerTask float64, memPerTask float64, hn *string, mac *string, comp_type *string) *ExampleScheduler {
+func NewExampleScheduler(q string, uri string) *ExampleScheduler {
 	return &ExampleScheduler{
-		executor:      exec,
 		tasksLaunched: 0,
 		tasksFinished: 0,
-		cpuPerTask:    cpuPerTask,
-		memPerTask:    memPerTask,
-		hostname:      *hn,
-		mac:           *mac,
-		comp_type:     *comp_type,
+		q:             q,
+		uri:           uri,
+	}
+}
+
+type VMInput struct {
+	hostname  string
+	mac       string
+	cpu       float64
+	mem       float64
+	executor  string
+	comp_type string
+}
+
+func DeleteFromQ(q string, id uint64) {
+	conn, e := beanstalk.Dial("tcp", q)
+	defer conn.Close()
+	if e != nil {
+		log.Fatal(e)
+	}
+	e = conn.Delete(id)
+}
+
+func FetchFromQ(q string) (*VMInput, uint64) {
+	conn, e := beanstalk.Dial("tcp", q)
+	defer conn.Close()
+	if e != nil {
+		log.Fatal(e)
+	}
+	tubeSet := beanstalk.NewTubeSet(conn, "mesos")
+	id, body, err := tubeSet.Reserve(10 * time.Hour)
+	if err != nil {
+		panic(err)
+	}
+	str := strings.Replace(string(body), "---", "", -1)
+	var ret VMInput
+	fmt.Println(str)
+	s := strings.Split(str, "\n")
+	fmt.Println(s)
+	for _, m := range s {
+		m = strings.Replace(m, " ", "", -1)
+		if len(m) < 3 {
+			continue
+		}
+
+		kv := strings.Split(m, "=")
+		//fmt.Println("K=",kv[0],"V=",kv[1])
+		v := kv[1]
+		switch kv[0] {
+		case "hostname":
+			ret.hostname = kv[1]
+		case "mac":
+			ret.mac = kv[1]
+		case "executor":
+			ret.executor = kv[1]
+		case "comp_type":
+			ret.comp_type = kv[1]
+		case "cpu":
+			ret.cpu, err = strconv.ParseFloat(v, 64)
+		case "mem":
+			ret.mem, err = strconv.ParseFloat(v, 64)
+		}
+	}
+	fmt.Printf("PRINTING THE STRUCT %+v", ret)
+	return &ret, id
+
+}
+func prepareExecutorInfo(uri string, m *VMInput) *mesos.ExecutorInfo {
+	executorUris := []*mesos.CommandInfo_URI{
+		{
+			Value: &uri,
+			//Executable: proto.Bool(true),
+		},
+	}
+	virt_cmd := "./virtmesos -h " + m.hostname + " -mac " + m.mac
+	fmt.Println("Command to be exec: ", virt_cmd)
+	return &mesos.ExecutorInfo{
+		ExecutorId: util.NewExecutorID(m.hostname),
+		Name:       proto.String("kvm"),
+		Source:     proto.String("virt_executor"),
+		Command: &mesos.CommandInfo{
+			Value: proto.String(virt_cmd),
+			Uris:  executorUris,
+			//Arguments: args,
+		},
 	}
 }
 
@@ -70,10 +147,8 @@ func (sched *ExampleScheduler) Disconnected(sched.SchedulerDriver) {
 
 func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offers []*mesos.Offer) {
 	logOffers(offers)
-	if(sched.tasksLaunched > 0 ) {
-		fmt.Println("TASKS Already Launched - Returning") 
-		return
-	}
+	m, mid := FetchFromQ(sched.q)
+	exec := prepareExecutorInfo(sched.uri, m)
 	attrib_arbitary_high := 100
 	var chosen_offer *mesos.Offer
 
@@ -82,16 +157,16 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		remainingCpus := getOfferCpu(offer)
 		remainingMems := getOfferMem(offer)
 
-		if sched.cpuPerTask <= remainingCpus && sched.memPerTask <= remainingMems {
-			get_attrib_for_offer := GetAttribVal(offer, sched.comp_type)
+		if m.cpu <= remainingCpus && m.mem <= remainingMems {
+			get_attrib_for_offer := GetAttribVal(offer, m.comp_type)
 			if get_attrib_for_offer < attrib_arbitary_high {
 				chosen_offer = offer
 			}
 		}
 	}
 
-	if(chosen_offer == nil ){
-		fmt.Println("NO OFFER MATCHED REQUIREMENT, RETURNING") 
+	if chosen_offer == nil {
+		fmt.Println("NO OFFER MATCHED REQUIREMENT, RETURNING")
 		return
 	}
 	taskId := &mesos.TaskID{
@@ -99,13 +174,13 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	}
 
 	task := &mesos.TaskInfo{
-		Name:     proto.String("kvm-(" + sched.hostname +")" + taskId.GetValue()),
+		Name:     proto.String("kvm-(" + m.hostname + ")" + taskId.GetValue()),
 		TaskId:   taskId,
 		SlaveId:  chosen_offer.SlaveId,
-		Executor: sched.executor,
+		Executor: exec,
 		Resources: []*mesos.Resource{
-			util.NewScalarResource("cpus", sched.cpuPerTask),
-			util.NewScalarResource("mem", sched.memPerTask),
+			util.NewScalarResource("cpus", m.cpu),
+			util.NewScalarResource("mem", m.mem),
 		},
 	}
 	log.Infof("Prepared task: %s with offer %s for launch\n", task.GetName(), chosen_offer.Id.GetValue())
@@ -114,16 +189,17 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	log.Infoln("Launching ", len(tasks), "tasks for offer", chosen_offer.Id.GetValue())
 	driver.LaunchTasks([]*mesos.OfferID{chosen_offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
 	sched.tasksLaunched++
+	DeleteFromQ(sched.q, mid)
 	return
 }
 
 func (sched *ExampleScheduler) StatusUpdate(driver sched.SchedulerDriver, status *mesos.TaskStatus) {
 	log.Infoln("Status update: task", status.TaskId.GetValue(), " is in state ", status.State.Enum().String())
 	if "TASK_RUNNING" == status.State.Enum().String() {
-		fmt.Println(sched.hostname,": has been started Succesfully, exiting")
-		//os.Exit(0) 
+		fmt.Println("has been started Succesfully, exiting")
+		//os.Exit(0)
 	}
-		
+
 }
 
 func (sched *ExampleScheduler) OfferRescinded(s sched.SchedulerDriver, id *mesos.OfferID) {

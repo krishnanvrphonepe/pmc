@@ -20,13 +20,11 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"github.com/gogo/protobuf/proto"
 	log "github.com/golang/glog"
 	. "github.com/krishnanvrphonepe/pmc/scheduler"
 	. "github.com/krishnanvrphonepe/pmc/server"
 	mesos "github.com/mesos/mesos-go/mesosproto"
-	util "github.com/mesos/mesos-go/mesosutil"
 	sched "github.com/mesos/mesos-go/scheduler"
 	"net"
 	"os"
@@ -59,32 +57,33 @@ func main() {
 
 	// Start HTTP server hosting executor binary
 	uri = ServeExecutorArtifact(*address, *artifactPort, *executorPath)
+	CreateAndRunMesosTask(uri)
 
-	// Handle Cmd Line args if Any
-	vm_input := NewVMInputter(*hostname, *mac, *mem, *cpu, *executorPath, *comp_type)
-	if vm_input != nil {
-		vm_input.CreateAndRunMesosTask(uri)
-	} else {
-		fmt.Println("This is going to be a noop", vm_input)
-	}
-	if *qep != "" {
-		fmt.Println("QEP=", *qep)
-		for { // endless loop
-			vm_inputq,id := FetchFromQ(*qep)
-			fmt.Println("ID=",id) 
-			if vm_inputq != nil {
-				vm_inputq.CreateAndRunMesosTask(uri)
-				//DeleteFromQ(*qep,id) 
+	/*
+		// Handle Cmd Line args if Any
+		//vm_input := NewVMInputter(*hostname, *mac, *mem, *cpu, *executorPath, *comp_type)
+		if vm_input != nil {
+			vm_input.CreateAndRunMesosTask(uri)
+		} else {
+			fmt.Println("This is going to be a noop", vm_input)
+		}
+		if *qep != "" {
+			fmt.Println("QEP=", *qep)
+			for { // endless loop
+				vm_inputq,id := FetchFromQ(*qep)
+				fmt.Println("ID=",id)
+				if vm_inputq != nil {
+					vm_inputq.CreateAndRunMesosTask(uri)
+					//DeleteFromQ(*qep,id)
+				}
 			}
 		}
-	}
+	*/
 }
 
-func (v *VMInput) CreateAndRunMesosTask(uri string) {
-	// Executor
-	exec := prepareExecutorInfo(uri, getExecutorCmd(v.executor), &v.hostname, &v.mac)
+func CreateAndRunMesosTask(uri string) {
 
-	scheduler := NewExampleScheduler(exec, v.cpu, v.mem, &v.hostname, &v.mac, &v.comp_type)
+	scheduler := NewExampleScheduler(*qep, uri)
 
 	// Framework
 	fwinfo := &mesos.FrameworkInfo{
@@ -112,31 +111,6 @@ func (v *VMInput) CreateAndRunMesosTask(uri string) {
 		log.Fatalf("Framework stopped with status %s and error: %s\n", stat.String(), err.Error())
 		os.Exit(-4)
 	}
-}
-
-func prepareExecutorInfo(uri string, cmd string, hn *string, mac *string) *mesos.ExecutorInfo {
-	executorUris := []*mesos.CommandInfo_URI{
-		{
-			Value: &uri,
-			//Executable: proto.Bool(true),
-		},
-	}
-	virt_cmd := "./virtmesos -h " + *hn + " -mac " + *mac
-	fmt.Println("Command to be exec: ", virt_cmd)
-	return &mesos.ExecutorInfo{
-		ExecutorId: util.NewExecutorID(*hn),
-		Name:       proto.String("kvm"),
-		Source:     proto.String("virt_executor"),
-		Command: &mesos.CommandInfo{
-			Value: proto.String(virt_cmd),
-			Uris:  executorUris,
-			//Arguments: args,
-		},
-	}
-}
-
-func getExecutorCmd(path string) string {
-	return "." + GetHttpPath(path)
 }
 
 func parseIP(address string) net.IP {
