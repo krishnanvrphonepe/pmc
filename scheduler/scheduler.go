@@ -90,6 +90,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		}
 	}
 
+	if(chosen_offer == nil ){
+		fmt.Println("NO OFFER MATCHED REQUIREMENT, RETURNING") 
+		return
+	}
 	taskId := &mesos.TaskID{
 		Value: proto.String(strconv.Itoa(sched.tasksLaunched)),
 	}
