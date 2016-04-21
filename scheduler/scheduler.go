@@ -19,13 +19,15 @@
 package scheduler
 
 import (
-	"github.com/gogo/protobuf/proto"
-	"strconv"
-	"strings"
-	"time"
-	//"os"
+	b64 "encoding/base64"
 	"fmt"
+	"github.com/gogo/protobuf/proto"
 	"github.com/kr/beanstalk"
+	//"os"
+	"strconv"
+	"time"
+
+	"encoding/json"
 
 	log "github.com/golang/glog"
 	mesos "github.com/mesos/mesos-go/mesosproto"
@@ -58,6 +60,14 @@ type VMInput struct {
 	executor  string
 	comp_type string
 }
+type VMInputJSON struct {
+	Hostname  string `json:"hostname"`
+	Mac       string `json:"mac"`
+	Cpu       string `json:"cpu"`
+	Mem       string `json:"mem"`
+	Executor  string `json:"executor"`
+	Comp_type string `json:"comp_type"`
+}
 
 func DeleteFromQ(q string, id uint64) {
 	conn, e := beanstalk.Dial("tcp", q)
@@ -79,35 +89,22 @@ func FetchFromQ(q string) (*VMInput, uint64) {
 	if err != nil {
 		panic(err)
 	}
-	str := strings.Replace(string(body), "---", "", -1)
-	var ret VMInput
-	fmt.Println(str)
-	s := strings.Split(str, "\n")
-	fmt.Println(s)
-	for _, m := range s {
-		m = strings.Replace(m, " ", "", -1)
-		if len(m) < 3 {
-			continue
-		}
-
-		kv := strings.Split(m, "=")
-		//fmt.Println("K=",kv[0],"V=",kv[1])
-		v := kv[1]
-		switch kv[0] {
-		case "hostname":
-			ret.hostname = kv[1]
-		case "mac":
-			ret.mac = kv[1]
-		case "executor":
-			ret.executor = kv[1]
-		case "comp_type":
-			ret.comp_type = kv[1]
-		case "cpu":
-			ret.cpu, err = strconv.ParseFloat(v, 64)
-		case "mem":
-			ret.mem, err = strconv.ParseFloat(v, 64)
-		}
+	str, err := b64.StdEncoding.DecodeString(string(body))
+	if err != nil {
+		fmt.Println("GOT ERROR", err)
 	}
+
+	var x VMInputJSON
+	_ = json.Unmarshal(str, &x)
+	fmt.Printf("Printing THE JSON UNMARSHAL %+v\n", x)
+
+	var ret VMInput
+	ret.hostname = x.Hostname
+	ret.mac = x.Mac
+	ret.executor = x.Executor
+	ret.comp_type = x.Comp_type
+	ret.cpu, err = strconv.ParseFloat(x.Cpu, 64)
+	ret.mem, err = strconv.ParseFloat(x.Mem, 64)
 	fmt.Printf("PRINTING THE STRUCT %+v", ret)
 	return &ret, id
 
@@ -160,6 +157,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		if m.cpu <= remainingCpus && m.mem <= remainingMems {
 			get_attrib_for_offer := GetAttribVal(offer, m.comp_type)
 			if get_attrib_for_offer < attrib_arbitary_high {
+				attrib_arbitary_high = get_attrib_for_offer
 				chosen_offer = offer
 			}
 		}
@@ -169,6 +167,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		fmt.Println("NO OFFER MATCHED REQUIREMENT, RETURNING")
 		return
 	}
+	fmt.Println(chosen_offer)
 	taskId := &mesos.TaskID{
 		Value: proto.String(strconv.Itoa(sched.tasksLaunched)),
 	}

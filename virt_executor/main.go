@@ -305,7 +305,7 @@ func Removefile(f string) {
 }
 
 func getMem(mem int) string {
-	m := mem * 1024 * 1024
+	m := mem * 1024 
 	return strconv.Itoa(m)
 }
 func GenXMLForDom(virt_template string) string {
