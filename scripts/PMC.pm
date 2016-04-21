@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# apt-get install libnet-ip-perl  libnet-netmask-perl fping
+# apt-get install libnet-ip-perl  libnet-netmask-perl fping  libjson-perl
 
 package PMC; 
 use Net::IP;
@@ -8,6 +8,8 @@ use Net::Netmask;
 use Net::DNS;
 use Beanstalk::Client;
 use Data::Dumper ;
+use JSON; 
+use MIME::Base64;
 
 my $DHCP_MAPPINGS_FILE = '/var/lib/libvirt/dnsmasq/mappings/dhcp' ; 
 my $HOSTS_MAPPINGS_DIR = '/var/lib/libvirt/dnsmasq/hostmappings' ; 
@@ -80,10 +82,27 @@ sub GenMAC {
 }
 
 
+sub FetchMsgFromQ {
+	my $client = shift ; 
+	my $jobc = $client->reserve;
+	my @args = $jobc->args() ;
+	my $decoded = decode_base64($args[0]);
+	print Dumper $decoded; 
+	my %ret; 
+	$ret{JOB} = $jobc ;
+	my $json = JSON->new->allow_nonref;
+	$ret{DATA} = $json->decode( $decoded );
+	return \%ret; 
+} 
 sub UpdateQ {
 
-	my $server = shift ; 
+	my $client = shift ; 
 	my $data = shift ;
+<<<<<<< HEAD
+	my $json = JSON->new->allow_nonref;
+	my $encoded = encode_base64($json->encode( $data )) ;
+	my $job = $client->put( {},$encoded); 
+=======
 	my $tube = shift ; 
 	print "Connecting to $server , $tube\n" ;
 	print Dumper $data;
@@ -98,11 +117,13 @@ sub UpdateQ {
 				    'comp_type='.$data->{comp_type},
 				    'executor='.$data->{executor}
 				    ) ; 
+>>>>>>> eb526ed22ac916fb95b8f2004194e852c0941212
 }
+
 sub GetMemory {
 	my $sz = shift ; 
 	my $mem = $1 if($sz =~ /M(\d+)/) ; 
-	return $mem * 1024 * 1024 ; 
+	return $mem ;
 }
 sub GetCPU {
 	my $sz = shift ; 
