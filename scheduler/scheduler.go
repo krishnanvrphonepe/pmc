@@ -119,7 +119,7 @@ func prepareExecutorInfo(uri string, m *VMInput) *mesos.ExecutorInfo {
 			//Executable: proto.Bool(true),
 		},
 	}
-	virt_cmd := "./virtmesos -h " + m.hostname + " -mac " + m.mac
+	virt_cmd := "./virtmesos -h " + m.hostname + " -mac " + m.mac + " -ct " + m.comp_type
 	fmt.Println("Command to be exec: ", virt_cmd)
 	return &mesos.ExecutorInfo{
 		ExecutorId: util.NewExecutorID(m.hostname),

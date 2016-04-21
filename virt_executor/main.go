@@ -51,6 +51,7 @@ var (
 	original_source_image       = "/var/local/trusty.ORIG.img"
 	virt_template_mesos         = "data/PMCLibvirtTemplate.xml"
 	virt_template               = "/etc/default/PMCLibvirtTemplate.xml"
+	AttribSeparator             = ";"
 )
 
 type virtExecutorImpl struct {
@@ -328,7 +329,7 @@ func getfields(path string) map[string]string {
 	for scanner.Scan() {
 		fmt.Println("GOT HERE")
 		fmt.Println(scanner.Text())
-		fields := strings.Split(scanner.Text(), ",")
+		fields := strings.Split(scanner.Text(), AttribSeparator) 
 		fmt.Println(fields)
 		ch := make(map[string]string)
 		for _, field := range fields {
@@ -365,7 +366,7 @@ func writefields(f string, kvpw *map[string]string) error {
 	kvp := *kvpw
 	var writestr = ""
 	for k, v := range kvp {
-		s := fmt.Sprintf("%v:%v,", k, v)
+		s := fmt.Sprintf("%v:%v%v", k, v,AttribSeparator)
 		writestr += s
 	}
 	writestr += "\n"
