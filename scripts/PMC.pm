@@ -98,26 +98,9 @@ sub UpdateQ {
 
 	my $client = shift ; 
 	my $data = shift ;
-<<<<<<< HEAD
 	my $json = JSON->new->allow_nonref;
 	my $encoded = encode_base64($json->encode( $data )) ;
 	my $job = $client->put( {},$encoded); 
-=======
-	my $tube = shift ; 
-	print "Connecting to $server , $tube\n" ;
-	print Dumper $data;
-
-	my $client = Beanstalk::Client->new( { server => $server, default_tube => $tube, }) or die "$!\n";
-
-	my $job = $client->put( {}, 'hostname='.$data->{hostname},
-	                            'ip='.$data->{ip},
-				    'mac='. $data->{mac},
-				    'cpu='.$data->{cpu},
-				    'mem='.$data->{mem},
-				    'comp_type='.$data->{comp_type},
-				    'executor='.$data->{executor}
-				    ) ; 
->>>>>>> eb526ed22ac916fb95b8f2004194e852c0941212
 }
 
 sub GetMemory {

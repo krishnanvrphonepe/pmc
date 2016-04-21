@@ -32,9 +32,5 @@ $qdata{executor} = $exr ;
 
 print Dumper \%qdata; 
 
-<<<<<<< HEAD
 my $client = Beanstalk::Client->new( { server => $q , default_tube => 'dnsmasq', }) or die "$!\n";
 PMC::UpdateQ($client,\%qdata) ; 
-=======
-PMC::UpdateQ($q,\%qdata,"dnsmasq") ; 
->>>>>>> eb526ed22ac916fb95b8f2004194e852c0941212
