@@ -45,3 +45,10 @@ vt_enabled:1;ct_test:4
 ```
 which means, there exist 4 VMs of the type c_test on this mesos slave, which is a baremetal. 
 
+
+#### Flow
+
+scripts/create_host.pl -> Q -> scripts/update_dnsmasq -> Q -> mesos framework
+
+
+
