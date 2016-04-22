@@ -27,7 +27,7 @@ data/PMCLibvirtTemplate.xml
 data/trusty-server-cloudimg-amd64-vmlinuz-generic  # http://cloud-images.ubuntu.com/trusty/current/
 data/trusty.ORIG.img  # http://cloud-images.ubuntu.com/trusty/current/ <- whatever suits you
 $ tar czvf exec.tgz virtmesos data
-$ ./pmc --master=<master_ip>:5050 --executor="$GOPATH/src/github.com/krishnanvrphonepe/pmc/exec.tgz" --logtostderr=true --address=<master_ip>
+$ ./pmc --master=192.168.254.10:5050 --executor="/abs/path/to/exec.tgz" --logtostderr=true --address=<mesos-master> -q <beanstalkd_ip:port>
 ```
 
 ####  Notes
@@ -50,5 +50,11 @@ which means, there exist 4 VMs of the type c_test on this mesos slave, which is 
 
 scripts/create_host.pl -> Q -> scripts/update_dnsmasq -> Q -> mesos framework
 
+
+#### Pending
+
+o Identify duplicate requests for host creation and NOOP
+o Make framework idempotent using hostdb, i.e., kill and restart framework as many times w/o causing adverse impact. 
+o Handle deletes ( How to release mesos resource ? ) 
 
 
