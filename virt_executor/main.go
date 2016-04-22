@@ -51,6 +51,7 @@ var (
 	original_source_image       = "/var/local/trusty.ORIG.img"
 	virt_template_mesos         = "data/PMCLibvirtTemplate.xml"
 	virt_template               = "/etc/default/PMCLibvirtTemplate.xml"
+	AttribSeparator             = ";"
 )
 
 type virtExecutorImpl struct {
@@ -67,11 +68,10 @@ type virtExecutorImpl struct {
 	CloudInitLoc   string
 	OriginalImg    string
 	VirtTemplate   string
-	virtconn *libvirt.VirConnection
+	virtconn       *libvirt.VirConnection
 }
 
 type virtExecutor struct {
-	tasksLaunched int
 	virtconn *libvirt.VirConnection
 }
 
@@ -82,8 +82,7 @@ func newVirtExecutor() *virtExecutor {
 		os.Exit(1)
 	}
 	return &virtExecutor{
-		tasksLaunched:  0,
-		virtconn:  &conn,
+		virtconn: &conn,
 	}
 }
 
@@ -106,34 +105,36 @@ func (mesosexec *virtExecutor) Reregistered(driver mesosexec.ExecutorDriver, sla
 
 func (mesosexec *virtExecutor) Disconnected(mesosexec.ExecutorDriver) {
 	fmt.Println("Executor disconnected.")
-	mesosexec.virtconn.CloseConnection() 
+	mesosexec.virtconn.CloseConnection()
 }
 
 func (mesosexec *virtExecutor) LaunchTask(driver mesosexec.ExecutorDriver, taskInfo *mesos.TaskInfo) {
 	fmt.Printf("Launching task %v with data [%#x]\n", taskInfo.GetName(), taskInfo.Data)
 
-	runStatus := &mesos.TaskStatus{ TaskId: taskInfo.GetTaskId(), State:  mesos.TaskState_TASK_RUNNING.Enum(), }
-	_, err := driver.SendStatusUpdate(runStatus)
-	if err != nil {
-		fmt.Println("Got error", err)
-	}
-
-	mesosexec.tasksLaunched++
-	fmt.Println("Total tasks launched ", mesosexec.tasksLaunched)
-	//
-	// this is where one would perform the requested task
-	fmt.Println("AM RUNNING THE TASK NOW WITH HOSTNAME=", *hostname)
-
-	vExec := newVirtExecutorImpl(mesosexec.virtconn)  
-	vExec.CreateVM() 
-
-
+	fmt.Println("Check if VM Already exists")
+	vExec := newVirtExecutorImpl(mesosexec.virtconn)
 	vmexists := vExec.CheckVMExists()
 	if vmexists == nil {
-		fmt.Println("VM has been created, exists now") 
-		vExec.UpdateAttrib(1) 
+		fmt.Println("VM Already Present ... NOOP")
+		/*
+		runStatus := &mesos.TaskStatus{TaskId: taskInfo.GetTaskId(), State: mesos.TaskState_TASK_FINISHED.Enum()}
+		_, err := driver.SendStatusUpdate(runStatus) // This ensures the resource is not held forever
+		if err != nil {
+			fmt.Println("Got error", err)
+		}
+		*/
+	} else {
+		fmt.Println("Attempting to Create a new VM: ", *hostname)
+		vExec.CreateVM()
+		vmexists := vExec.CheckVMExists()
+		if vmexists == nil {
+			fmt.Println("VM has been created, exists now")
+			vExec.UpdateAttrib(1)
+		}
 	}
-	_, err = driver.SendStatusUpdate(runStatus)
+
+	runStatus := &mesos.TaskStatus{TaskId: taskInfo.GetTaskId(), State: mesos.TaskState_TASK_RUNNING.Enum()}
+	_, err := driver.SendStatusUpdate(runStatus)
 	if err != nil {
 		fmt.Println("Got error", err)
 	}
@@ -155,7 +156,6 @@ func (mesosexec *virtExecutor) Shutdown(mesosexec.ExecutorDriver) {
 func (mesosexec *virtExecutor) Error(driver mesosexec.ExecutorDriver, err string) {
 	fmt.Println("Got error message:", err)
 }
-
 
 func main() {
 	fmt.Println("Starting Example Executor (Go)")
@@ -193,12 +193,12 @@ func newVirtExecutorImpl(c *libvirt.VirConnection) *virtExecutorImpl {
 		CloudInitLoc:   cloud_init,
 		OriginalImg:    original_source_image,
 		VirtTemplate:   virt_template,
-		virtconn: c,
+		virtconn:       c,
 	}
 }
 
 func (vE *virtExecutorImpl) UpdateAttrib(u int) error {
-	if err := updateattrib("/etc/mesos-slave/attributes", vE.ComponentType,u); err != nil {
+	if err := updateattrib("/etc/mesos-slave/attributes", vE.ComponentType, u, vE.Hostname); err != nil {
 		fmt.Printf("Failed to Update attribute for ", vE.ComponentType)
 		return err
 	}
@@ -218,8 +218,8 @@ func (vE *virtExecutorImpl) CheckVMExists() error {
 			return nil
 		}
 	}
-	return fmt.Errorf("NOT FOUND: %v",vE.Hostname) 
-} 
+	return fmt.Errorf("NOT FOUND: %v", vE.Hostname)
+}
 func (vE *virtExecutorImpl) CreateVM() {
 	domxml := vE.GenDomXML()
 	conn := vE.virtconn
@@ -231,10 +231,10 @@ func (vE *virtExecutorImpl) CreateVM() {
 		fmt.Printf("Failed to create domain")
 		os.Exit(1)
 	}
-} 
+}
 
 func (vE *virtExecutorImpl) GenDomXML() string {
-	xml := GenXMLForDom(vE.VirtTemplate) 
+	xml := GenXMLForDom(vE.VirtTemplate)
 	xml = strings.Replace(xml, "__PMC__HOSTNAME__", vE.Hostname, 1)
 	uuid := fmt.Sprintf("%s", uuid.NewV4())
 	xml = strings.Replace(xml, "__PMC__UUID__", uuid, 1)
@@ -304,7 +304,7 @@ func Removefile(f string) {
 }
 
 func getMem(mem int) string {
-	m := mem * 1024 * 1024
+	m := mem * 1024
 	return strconv.Itoa(m)
 }
 func GenXMLForDom(virt_template string) string {
@@ -328,7 +328,7 @@ func getfields(path string) map[string]string {
 	for scanner.Scan() {
 		fmt.Println("GOT HERE")
 		fmt.Println(scanner.Text())
-		fields := strings.Split(scanner.Text(), ",")
+		fields := strings.Split(scanner.Text(), AttribSeparator)
 		fmt.Println(fields)
 		ch := make(map[string]string)
 		for _, field := range fields {
@@ -349,7 +349,7 @@ func getfields(path string) map[string]string {
 	return nil
 }
 
-func updateattrib(path string, attrib string, u int) error {
+func updateattrib(path string, attrib string, u int, h string) error {
 	if attrib == "" {
 		return nil
 	}
@@ -357,6 +357,7 @@ func updateattrib(path string, attrib string, u int) error {
 	fmt.Println(kvals)
 	kvalsn := updatefield(&kvals, attrib, u)
 	fmt.Println(kvalsn, attrib)
+	kvalsn[h] = "1" // VM name gets added as part of the attributer, so the framework can get this info
 	err := writefields(path, &kvalsn)
 	return err
 }
@@ -365,7 +366,7 @@ func writefields(f string, kvpw *map[string]string) error {
 	kvp := *kvpw
 	var writestr = ""
 	for k, v := range kvp {
-		s := fmt.Sprintf("%v:%v,", k, v)
+		s := fmt.Sprintf("%v:%v%v", k, v, AttribSeparator)
 		writestr += s
 	}
 	writestr += "\n"
@@ -419,7 +420,7 @@ func copyIfDNE(config_mesosfile string, config_virtfile string) error {
 	//if a new config is to be passed, it will overwrite existing config
 	if _, err := os.Stat(config_mesosfile); err == nil {
 		cmd := exec.Command("mv", config_mesosfile, config_virtfile)
-		fmt.Println(cmd) 
+		fmt.Println(cmd)
 		if err := cmd.Run(); err != nil {
 			cp_err := fmt.Errorf("Got error with File %s -> %s, : %s", config_mesosfile, config_virtfile, os.Stderr)
 			return cp_err
@@ -430,4 +431,3 @@ func copyIfDNE(config_mesosfile string, config_virtfile string) error {
 	}
 	return nil
 }
-
