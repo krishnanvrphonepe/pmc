@@ -54,8 +54,9 @@ scripts/create_host.pl -> Q -> scripts/update_dnsmasq -> Q -> mesos framework
 
 #### Pending
 
-o Identify duplicate requests for host creation and NOOP
-o Make framework idempotent using hostdb, i.e., kill and restart framework as many times w/o causing adverse impact. 
-o Handle deletes ( How to release mesos resource ? ) 
+* Identify duplicate requests for host creation and NOOP
+* Make framework idempotent using hostdb, i.e., kill and restart framework as many times w/o causing adverse impact. 
+* Handle deletes ( How to release mesos resource ? ) 
+* Component type handling in baremetal host, i.e., "ct" attribute needs to be updated to reflect the instantaneous status, so as to get a better distribution. 
 
 
