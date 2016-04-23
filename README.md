@@ -27,6 +27,7 @@ data/PMCLibvirtTemplate.xml
 data/trusty-server-cloudimg-amd64-vmlinuz-generic  # http://cloud-images.ubuntu.com/trusty/current/
 data/trusty.ORIG.img  # http://cloud-images.ubuntu.com/trusty/current/ <- whatever suits you
 $ tar czvf exec.tgz virtmesos data
+$ mkdir /var/libvirt/hostdb # directory for hostdb. One json per host. Not configurable as of now ;)
 $ ./pmc --master=<master:5050> --executor="/abs/path/to/exec.tgz" --logtostderr=true --address=<http_server> -q <beanstalkd_ip:port>
 # The http server above is a server that hosts the exec. With this framework, it can be the IP address of the scheduler itself
 ```
