@@ -24,20 +24,19 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/kr/beanstalk"
 	//"os"
-	"strconv"
-	"time"
-	"io/ioutil"
 	"encoding/json"
 	log "github.com/golang/glog"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	util "github.com/mesos/mesos-go/mesosutil"
 	sched "github.com/mesos/mesos-go/scheduler"
+	"io/ioutil"
+	"strconv"
+	"time"
 )
 
-
 var (
-	HostDBDir      = "/var/libvirt/hostdb" 
-) 
+	HostDBDir = "/var/libvirt/hostdb"
+)
 
 type ExampleScheduler struct {
 	tasksLaunched int
@@ -46,8 +45,9 @@ type ExampleScheduler struct {
 	q             string
 	uri           string
 	mid           uint64
-	is_new_host	bool
-	Vm_input *VMInput
+	is_new_host   bool
+	Vm_input      *VMInput
+	HostdbData    []string //json strings
 }
 
 func NewExampleScheduler(q string, uri string) *ExampleScheduler {
@@ -76,7 +76,20 @@ type VMInputJSON struct {
 	Comp_type string `json:"comp_type"`
 }
 
-func (sched *ExampleScheduler)  DeleteFromQ() {
+func (sched *ExampleScheduler) GetDataFromHostDB() {
+	files, _ := ioutil.ReadDir(HostDBDir)
+	var x []string
+	for _, f := range files {
+		fn := HostDBDir +"/" + f.Name() 
+		data,_ := ioutil.ReadFile(fn) 
+		if(len(data) > 10) {// Eliminate . files and other crappy files
+			x = append(x,string(data)) 
+		}
+	}
+	sched.HostdbData = x 
+}
+
+func (sched *ExampleScheduler) DeleteFromQ() {
 	conn, e := beanstalk.Dial("tcp", sched.q)
 	defer conn.Close()
 	if e != nil {
@@ -87,15 +100,15 @@ func (sched *ExampleScheduler)  DeleteFromQ() {
 
 func (sched *ExampleScheduler) UpdateHostDB() {
 
-	if(sched.is_new_host == false) {
-		fmt.Println(">>>> EXISTING HOST ... No Hostdb update" ) 
+	if sched.is_new_host == false {
+		fmt.Println(">>>> EXISTING HOST ... No Hostdb update")
 		return
 	}
-		
-	cpuval := strconv.FormatFloat(sched.Vm_input.cpu, 'f',-1,32)
-	memval := strconv.FormatFloat(sched.Vm_input.mem, 'f',-1,32)
+
+	cpuval := strconv.FormatFloat(sched.Vm_input.cpu, 'f', -1, 32)
+	memval := strconv.FormatFloat(sched.Vm_input.mem, 'f', -1, 32)
 	v := &VMInputJSON{
-		Hostname: sched.Vm_input.hostname,
+		Hostname:  sched.Vm_input.hostname,
 		Mac:       sched.Vm_input.mac,
 		Cpu:       cpuval,
 		Mem:       memval,
@@ -103,54 +116,62 @@ func (sched *ExampleScheduler) UpdateHostDB() {
 		Comp_type: sched.Vm_input.comp_type,
 	}
 
-	d,_ := json.Marshal(v)
-	fmt.Println("Printing the struct:",v) 
-	fmt.Println("Writing out:",string(d)) 
-	fname := HostDBDir+"/"+sched.Vm_input.hostname 
+	d, _ := json.Marshal(v)
+	fmt.Println("Printing the struct:", v)
+	fmt.Println("Writing out:", string(d))
+	fname := HostDBDir + "/" + sched.Vm_input.hostname
 	err := ioutil.WriteFile(fname, d, 0644)
 	if err != nil {
-		fmt.Println(fname,": Updattion of HOSTDB FAILED !!!!!!!!!!!!!!!!!") 
+		fmt.Println(fname, ": Updattion of HOSTDB FAILED !!!!!!!!!!!!!!!!!")
 	}
-		
+
 }
 func (sched *ExampleScheduler) FetchFromQ() {
 
-	conn, e := beanstalk.Dial("tcp", sched.q)
-	defer conn.Close()
-	if e != nil {
-		log.Fatal(e)
-	}
-	tubeSet := beanstalk.NewTubeSet(conn, "mesos")
-	id, body, err := tubeSet.Reserve(10 * time.Hour)
-	sched.mid = id
-	if err != nil {
-		panic(err)
-	}
-	str, err := b64.StdEncoding.DecodeString(string(body))
-	if err != nil {
-		fmt.Println("GOT ERROR", err)
+	var str []byte
+	// We first exhaust all hosts in the hostdb
+	if len(sched.HostdbData) > 0 {
+		//pop
+		var strb string 
+		strb, sched.HostdbData = sched.HostdbData[len(sched.HostdbData)-1], sched.HostdbData[:len(sched.HostdbData)-1]
+		str = []byte(strb)
+	} else {
+		conn, e := beanstalk.Dial("tcp", sched.q)
+		defer conn.Close()
+		if e != nil {
+			log.Fatal(e)
+		}
+		tubeSet := beanstalk.NewTubeSet(conn, "mesos")
+		id, body, err := tubeSet.Reserve(10 * time.Hour)
+		sched.mid = id
+		if err != nil {
+			panic(err)
+		}
+		str, err = b64.StdEncoding.DecodeString(string(body))
+		if err != nil {
+			fmt.Println("GOT ERROR", err)
+		}
 	}
 
 	var x VMInputJSON
 	_ = json.Unmarshal(str, &x)
-	fmt.Printf("Printing THE JSON UNMARSHAL %+v\n", x)
-	cpuval, err := strconv.ParseFloat(x.Cpu, 64)
-	memval, err := strconv.ParseFloat(x.Mem, 64)
-	sched.Vm_input = &VMInput {
-		hostname: x.Hostname,
-		mac: x.Mac,
-		executor: x.Executor,
+	//fmt.Printf("Printing THE JSON UNMARSHAL %+v\n", x)
+	cpuval, _ := strconv.ParseFloat(x.Cpu, 64)
+	memval, _ := strconv.ParseFloat(x.Mem, 64)
+	sched.Vm_input = &VMInput{
+		hostname:  x.Hostname,
+		mac:       x.Mac,
+		executor:  x.Executor,
 		comp_type: x.Comp_type,
-		cpu: cpuval,
-		mem: memval,
-
+		cpu:       cpuval,
+		mem:       memval,
 	}
 	sched.is_new_host = false
 
-	fmt.Printf("PRINTING THE STRUCT %+v", sched.Vm_input)
+	log.Infoln("PRINTING THE STRUCT %+v", sched.Vm_input)
 
 }
-func (sched *ExampleScheduler)  PrepareExecutorInfo() *mesos.ExecutorInfo {
+func (sched *ExampleScheduler) PrepareExecutorInfo() *mesos.ExecutorInfo {
 	executorUris := []*mesos.CommandInfo_URI{
 		{
 			Value: &sched.uri,
@@ -159,7 +180,7 @@ func (sched *ExampleScheduler)  PrepareExecutorInfo() *mesos.ExecutorInfo {
 	}
 	virt_cmd := "./virtmesos -h " + sched.Vm_input.hostname + " -mac " + sched.Vm_input.mac + " -ct " + sched.Vm_input.comp_type
 	fmt.Println("Command to be exec: ", virt_cmd)
-	//id := strconv.Itoa(sched.tasksLaunched) 
+	//id := strconv.Itoa(sched.tasksLaunched)
 	return &mesos.ExecutorInfo{
 		ExecutorId: util.NewExecutorID(sched.Vm_input.hostname),
 		Name:       proto.String("kvm"),
@@ -186,6 +207,10 @@ func (sched *ExampleScheduler) Disconnected(sched.SchedulerDriver) {
 
 func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offers []*mesos.Offer) {
 	logOffers(offers)
+	if sched.tasksLaunched == 0 {
+		sched.GetDataFromHostDB() //Be  Idempotent
+	}
+	//fmt.Println(sched)
 	sched.FetchFromQ()
 	exec := sched.PrepareExecutorInfo()
 	attrib_arbitary_high := 100
@@ -197,10 +222,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		remainingMems := getOfferMem(offer)
 
 		if sched.Vm_input.cpu <= remainingCpus && sched.Vm_input.mem <= remainingMems {
-			get_attrib_for_offer,vm_on_host := GetAttribVal(offer, sched.Vm_input.comp_type, sched.Vm_input.hostname)
+			get_attrib_for_offer, vm_on_host := GetAttribVal(offer, sched.Vm_input.comp_type, sched.Vm_input.hostname)
 			if vm_on_host == true {
 				chosen_offer = offer
-				fmt.Println(">>>>>>>>> VM already present, got the chosen offer") 
+				fmt.Println(">>>>>>>>> VM already present, got the chosen offer")
 				break // thats it, this is it
 			}
 			if get_attrib_for_offer < attrib_arbitary_high {
@@ -216,10 +241,12 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		sched.is_new_host = false
 		return
 	}
-	fmt.Println(">>>>>>>>>> CHOSEN OFFER:\n",chosen_offer,"\n<<<<<<<<<<<<<<< CHOSEN OFFER")
-	fmt.Println("\n>>>>>>>>>>>>>>>>>>> PRINT SCHEDULER INFO >>>>>>>>>>>>>>>>>>>>>>>>") 
-	fmt.Printf("%+v\n%+v\n",sched,sched.Vm_input) 
-	fmt.Println("\n>>>>>>>>>>>>>>>>>>> PRINT SCHEDULER INFO >>>>>>>>>>>>>>>>>>>>>>>>") 
+	/*
+	fmt.Println(">>>>>>>>>> CHOSEN OFFER:\n", chosen_offer, "\n<<<<<<<<<<<<<<< CHOSEN OFFER")
+	fmt.Println("\n>>>>>>>>>>>>>>>>>>> PRINT SCHEDULER INFO >>>>>>>>>>>>>>>>>>>>>>>>")
+	fmt.Printf("%+v\n%+v\n", sched, sched.Vm_input)
+	fmt.Println("\n>>>>>>>>>>>>>>>>>>> PRINT SCHEDULER INFO >>>>>>>>>>>>>>>>>>>>>>>>")
+	*/
 	taskId := &mesos.TaskID{
 		Value: proto.String(strconv.Itoa(sched.tasksLaunched)),
 	}
@@ -245,10 +272,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 
 func (sched *ExampleScheduler) StatusUpdate(driver sched.SchedulerDriver, status *mesos.TaskStatus) {
 	log.Infoln("Status update: task", status.TaskId.GetValue(), " is in state ", status.State.Enum().String())
-	fmt.Printf("%+v\n",status)
+	fmt.Printf("%+v\n", status)
 	sched.DeleteFromQ()
 	if "TASK_RUNNING" == status.State.Enum().String() {
-		fmt.Println(sched.Vm_input.hostname," has been started Succesfully, exiting")
+		fmt.Println(sched.Vm_input.hostname, " has been started Succesfully, exiting")
 		sched.UpdateHostDB()
 		//os.Exit(0)
 	}

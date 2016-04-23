@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	"fmt"
+//	"fmt"
 	log "github.com/golang/glog"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	util "github.com/mesos/mesos-go/mesosutil"
@@ -12,7 +12,7 @@ func GetAttribVal ( offer *mesos.Offer, ct string , h string) (int,bool)  {
 	retval := 0 
 	vm_on_host := false
 	for _, attrib := range offer.Attributes {
-	fmt.Println("ATTRIB:\n",attrib) 
+	//fmt.Println("ATTRIB:\n",attrib) 
 		if (*attrib.Name == "vt_enabled") && (*attrib.Scalar.Value == 1) {
 			host_ok = true
 		} 
