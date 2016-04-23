@@ -59,4 +59,12 @@ scripts/create_host.pl -> Q -> scripts/update_dnsmasq -> Q -> mesos framework
 * Handle deletes ( How to release mesos resource ? ) 
 * Component type handling in baremetal host, i.e., "ct" attribute needs to be updated to reflect the instantaneous status, so as to get a better distribution. 
 
+#### Open Questions
 
+* How to apply attributes on the fly?
+Egs: When i spin a vm say dev-nginx001 on a bremetal dev-baremetal001, I'd like to immediately tag dev-nginx001 as an attribute to dev-baremetal001. So, why do we need this  ? So when the framework dies, upon a restart, it'll fetch details of all existing hosts from a hostdb and accept offers for existing hosts from respective baremetals where there is an attribute match. This is to ensure the VM does not get recreated. 
+Currently think of solving this with a perl program on the baremetal updating attributes and restarting mesos-slave as and when necessary. 
+
+* How to kill a specific task ? 
+If a duplicate request gets made for the same host, that task needs to be detected and a previous request for the same task should be killed. This ensures that it mesos does not reflect that VM as consuming twice the resources it actually does. 
+Current thought is prevention of duplicate request is the best way. 
