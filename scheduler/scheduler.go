@@ -47,8 +47,8 @@ type ExampleScheduler struct {
 	mid           uint64
 	is_new_host   bool
 	Vm_input      *VMInput
-	HostdbData    []string //json strings
-	ctype_map     map[string]map[string]uint64  // a map of component type in each baremetal
+	HostdbData    []string                     //json strings
+	ctype_map     map[string]map[string]uint64 // a map of component type in each baremetal
 }
 
 func NewExampleScheduler(q string, uri string) *ExampleScheduler {
@@ -83,13 +83,13 @@ func (sched *ExampleScheduler) GetDataFromHostDB() {
 	files, _ := ioutil.ReadDir(HostDBDir)
 	var x []string
 	for _, f := range files {
-		fn := HostDBDir +"/" + f.Name() 
-		data,_ := ioutil.ReadFile(fn) 
-		if(len(data) > 10) {// Eliminate . files and other crappy files
-			x = append(x,string(data)) 
+		fn := HostDBDir + "/" + f.Name()
+		data, _ := ioutil.ReadFile(fn)
+		if len(data) > 10 { // Eliminate . files and other crappy files
+			x = append(x, string(data))
 		}
 	}
-	sched.HostdbData = x 
+	sched.HostdbData = x
 }
 
 func (sched *ExampleScheduler) DeleteFromQ() {
@@ -136,7 +136,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	// We first exhaust all hosts in the hostdb
 	if len(sched.HostdbData) > 0 {
 		//pop
-		var strb string 
+		var strb string
 		strb, sched.HostdbData = sched.HostdbData[len(sched.HostdbData)-1], sched.HostdbData[:len(sched.HostdbData)-1]
 		str = []byte(strb)
 	} else {
@@ -169,7 +169,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		comp_type: x.Comp_type,
 		cpu:       cpuval,
 		mem:       memval,
-		baremetal:       x.Baremetal,
+		baremetal: x.Baremetal,
 	}
 	sched.is_new_host = false
 
@@ -212,6 +212,7 @@ func (sched *ExampleScheduler) Disconnected(sched.SchedulerDriver) {
 
 func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offers []*mesos.Offer) {
 	logOffers(offers)
+	fmt.Println(sched)
 	if sched.tasksLaunched == 0 {
 		sched.GetDataFromHostDB() //Be  Idempotent
 	}
@@ -231,11 +232,11 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 			host_ok, vm_on_host := GetAttribVal(offer, sched.Vm_input.baremetal)
 			if vm_on_host == true {
 				chosen_offer = offer
-				fmt.Println(">>>>>>>>> VM already present on ",sched.Vm_input.baremetal, " , got the chosen offer")
+				fmt.Println(">>>>>>>>> VM already present on ", sched.Vm_input.baremetal, " , got the chosen offer")
 				break // thats it, this is it
 			}
 			get_attrib_for_offer := sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type]
-			if (host_ok == true ) && (get_attrib_for_offer < attrib_arbitary_high) {
+			if (host_ok == true) && (get_attrib_for_offer < attrib_arbitary_high) {
 				attrib_arbitary_high = get_attrib_for_offer
 				chosen_offer = offer
 				sched.is_new_host = true
@@ -248,21 +249,23 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		sched.is_new_host = false
 		return
 	}
-	if(sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type] == 0 ) {
-		t1 := make(map[string]uint64) 
-		t1[sched.Vm_input.comp_type] = 1 
-		t2 := make(map[string]map[string]uint64)
-		t2[sched.Vm_input.baremetal] = t1 
-		sched.ctype_map = t2 
-	} else {
-		sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type]++ 
-	}
+	//fmt.Println("\n\n\nMAP VAL\n>>>>>>>>>>>", sched.Vm_input.baremetal, sched.Vm_input.comp_type, sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type], "\n\n\n\n>>>>>>>>>>>>\n")
+
+	if sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type] == 0 { //go wtf
+		if sched.ctype_map  == nil {
+			t1 := make(map[string]uint64) 
+			t1[sched.Vm_input.comp_type] = 0 
+			sched.ctype_map = make(map[string]map[string]uint64)
+			sched.ctype_map[sched.Vm_input.baremetal] = t1
+		} 
+	} 
+	sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type]++
 	/*
-	fmt.Println ("\n\n\nMAP VAL\n>>>>>>>>>>>",sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type],"\n\n\n\n>>>>>>>>>>>>\n") 
-	fmt.Println(">>>>>>>>>> CHOSEN OFFER:\n", chosen_offer, "\n<<<<<<<<<<<<<<< CHOSEN OFFER")
-	fmt.Println("\n>>>>>>>>>>>>>>>>>>> PRINT SCHEDULER INFO >>>>>>>>>>>>>>>>>>>>>>>>")
-	fmt.Printf("%+v\n%+v\n", sched, sched.Vm_input)
-	fmt.Println("\n>>>>>>>>>>>>>>>>>>> PRINT SCHEDULER INFO >>>>>>>>>>>>>>>>>>>>>>>>")
+		fmt.Println("\n\n\nMAP VAL\n>>>>>>>>>>>", sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type], "\n\n\n\n>>>>>>>>>>>>\n")
+		fmt.Println(">>>>>>>>>> CHOSEN OFFER:\n", chosen_offer, "\n<<<<<<<<<<<<<<< CHOSEN OFFER")
+		fmt.Println("\n>>>>>>>>>>>>>>>>>>> PRINT SCHEDULER INFO >>>>>>>>>>>>>>>>>>>>>>>>")
+		fmt.Printf("%+v\n%+v\n", sched, sched.Vm_input)
+		fmt.Println("\n>>>>>>>>>>>>>>>>>>> PRINT SCHEDULER INFO >>>>>>>>>>>>>>>>>>>>>>>>")
 	*/
 	taskId := &mesos.TaskID{
 		Value: proto.String(strconv.Itoa(sched.tasksLaunched)),
@@ -294,7 +297,7 @@ func (sched *ExampleScheduler) StatusUpdate(driver sched.SchedulerDriver, status
 	fmt.Printf("%+v\n", sched)
 	sched.DeleteFromQ()
 	if "TASK_RUNNING" == status.State.Enum().String() {
-		fmt.Println(sched.Vm_input.hostname, " has been started Succesfully on ",sched.Vm_input.baremetal," exiting")
+		fmt.Println(sched.Vm_input.hostname, " has been started Succesfully on ", sched.Vm_input.baremetal, " exiting")
 		sched.UpdateHostDB()
 		//os.Exit(0)
 	}
