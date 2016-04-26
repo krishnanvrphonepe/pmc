@@ -19,7 +19,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	mesosexec "github.com/mesos/mesos-go/executor"
@@ -129,7 +128,6 @@ func (mesosexec *virtExecutor) LaunchTask(driver mesosexec.ExecutorDriver, taskI
 		vmexists := vExec.CheckVMExists()
 		if vmexists == nil {
 			fmt.Println("VM has been created, exists now")
-			vExec.UpdateAttrib(1)
 		}
 	}
 
@@ -197,13 +195,6 @@ func newVirtExecutorImpl(c *libvirt.VirConnection) *virtExecutorImpl {
 	}
 }
 
-func (vE *virtExecutorImpl) UpdateAttrib(u int) error {
-	if err := updateattrib("/etc/mesos-slave/attributes", vE.ComponentType, u, vE.Hostname); err != nil {
-		fmt.Printf("Failed to Update attribute for ", vE.ComponentType)
-		return err
-	}
-	return nil
-}
 func (vE *virtExecutorImpl) CheckVMExists() error {
 	conn := vE.virtconn
 	doms, err := conn.ListAllDomains(libvirt.VIR_CONNECT_LIST_DOMAINS_PERSISTENT)
@@ -317,85 +308,6 @@ func GenXMLForDom(virt_template string) string {
 	xmlstr := string(dat)
 	return xmlstr
 
-}
-
-func getfields(path string) map[string]string {
-	inFile, _ := os.Open(path)
-	defer inFile.Close()
-	scanner := bufio.NewScanner(inFile)
-	scanner.Split(bufio.ScanLines)
-
-	for scanner.Scan() {
-		fmt.Println("GOT HERE")
-		fmt.Println(scanner.Text())
-		fields := strings.Split(scanner.Text(), AttribSeparator)
-		fmt.Println(fields)
-		ch := make(map[string]string)
-		for _, field := range fields {
-			if len(field) < 1 {
-				break
-			}
-			fmt.Println(field)
-			kvs := strings.Split(field, ":")
-			k := kvs[0]
-			v := kvs[1]
-			fmt.Println("0=", k, "1=", v)
-			ch[k] = v
-			fmt.Println(ch)
-			fmt.Println("GOT HERE - BREAK")
-		}
-		return ch
-	}
-	return nil
-}
-
-func updateattrib(path string, attrib string, u int, h string) error {
-	if attrib == "" {
-		return nil
-	}
-	kvals := getfields(path)
-	fmt.Println(kvals)
-	kvalsn := updatefield(&kvals, attrib, u)
-	fmt.Println(kvalsn, attrib)
-	kvalsn[h] = "1" // VM name gets added as part of the attributer, so the framework can get this info
-	err := writefields(path, &kvalsn)
-	return err
-}
-
-func writefields(f string, kvpw *map[string]string) error {
-	kvp := *kvpw
-	var writestr = ""
-	for k, v := range kvp {
-		s := fmt.Sprintf("%v:%v%v", k, v, AttribSeparator)
-		writestr += s
-	}
-	writestr += "\n"
-	fmt.Println("WRITING STRING ", writestr)
-	d1 := []byte(writestr)
-	err := ioutil.WriteFile(f, d1, 0644)
-	return err
-}
-
-func updatefield(kvpp *map[string]string, attrib string, u int) map[string]string {
-	kvp := *kvpp
-	if len(kvp) == 0 {
-		kvp = make(map[string]string)
-	}
-	i, ok := kvp[attrib]
-	var attribval = 0
-	if !ok {
-		attribval = 0
-	} else {
-		attribval_i, err := strconv.Atoi(i)
-		if err != nil {
-			fmt.Println("Adding to attrib failed", attrib, err)
-		}
-		attribval = attribval_i
-
-	}
-	attribval += u
-	kvp[attrib] = strconv.Itoa(attribval)
-	return kvp
 }
 
 func resolvConfignImages() error {
