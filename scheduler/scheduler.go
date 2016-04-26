@@ -66,6 +66,7 @@ type VMInput struct {
 	mem       float64
 	executor  string
 	comp_type string
+	baremetal string
 }
 type VMInputJSON struct {
 	Hostname  string `json:"hostname"`
@@ -74,6 +75,7 @@ type VMInputJSON struct {
 	Mem       string `json:"mem"`
 	Executor  string `json:"executor"`
 	Comp_type string `json:"comp_type"`
+	Baremetal string `json:"baremetal"`
 }
 
 func (sched *ExampleScheduler) GetDataFromHostDB() {
@@ -114,10 +116,11 @@ func (sched *ExampleScheduler) UpdateHostDB() {
 		Mem:       memval,
 		Executor:  sched.Vm_input.executor,
 		Comp_type: sched.Vm_input.comp_type,
+		Baremetal: sched.Vm_input.baremetal,
 	}
 
 	d, _ := json.Marshal(v)
-	fmt.Println("Printing the struct:", v)
+	fmt.Printf("Printing the struct: %+v\n", v)
 	fmt.Println("Writing out:", string(d))
 	fname := HostDBDir + "/" + sched.Vm_input.hostname
 	err := ioutil.WriteFile(fname, d, 0644)
@@ -165,6 +168,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		comp_type: x.Comp_type,
 		cpu:       cpuval,
 		mem:       memval,
+		baremetal:       x.Baremetal,
 	}
 	sched.is_new_host = false
 
@@ -222,10 +226,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		remainingMems := getOfferMem(offer)
 
 		if sched.Vm_input.cpu <= remainingCpus && sched.Vm_input.mem <= remainingMems {
-			get_attrib_for_offer, vm_on_host := GetAttribVal(offer, sched.Vm_input.comp_type, sched.Vm_input.hostname)
+			get_attrib_for_offer, vm_on_host := GetAttribVal(offer, sched.Vm_input.comp_type, sched.Vm_input.hostname, sched.Vm_input.baremetal)
 			if vm_on_host == true {
 				chosen_offer = offer
-				fmt.Println(">>>>>>>>> VM already present, got the chosen offer")
+				fmt.Println(">>>>>>>>> VM already present on ",sched.Vm_input.baremetal, " , got the chosen offer")
 				break // thats it, this is it
 			}
 			if get_attrib_for_offer < attrib_arbitary_high {
@@ -267,6 +271,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	log.Infoln("Launching ", len(tasks), "tasks for offer", chosen_offer.Id.GetValue())
 	driver.LaunchTasks([]*mesos.OfferID{chosen_offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
 	sched.tasksLaunched++
+	sched.Vm_input.baremetal = *chosen_offer.Hostname
 	return
 }
 
@@ -275,7 +280,7 @@ func (sched *ExampleScheduler) StatusUpdate(driver sched.SchedulerDriver, status
 	fmt.Printf("%+v\n", status)
 	sched.DeleteFromQ()
 	if "TASK_RUNNING" == status.State.Enum().String() {
-		fmt.Println(sched.Vm_input.hostname, " has been started Succesfully, exiting")
+		fmt.Println(sched.Vm_input.hostname, " has been started Succesfully on ",sched.Vm_input.baremetal," exiting")
 		sched.UpdateHostDB()
 		//os.Exit(0)
 	}
