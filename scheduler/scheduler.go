@@ -30,33 +30,38 @@ import (
 	util "github.com/mesos/mesos-go/mesosutil"
 	sched "github.com/mesos/mesos-go/scheduler"
 	"io/ioutil"
+	//"math"
 	"strconv"
 	"time"
+	"strings"
 )
 
 var (
 	HostDBDir = "/var/libvirt/hostdb"
-)
+    )
 
 type ExampleScheduler struct {
-	tasksLaunched int
-	tasksFinished int
-	totalTasks    int
-	q             string
-	uri           string
-	mid           uint64
-	is_new_host   bool
-	Vm_input      *VMInput
-	HostdbData    []string                     //json strings
-	ctype_map     map[string]map[string]uint64 // a map of component type in each baremetal
+	tasksLaunched  int
+	tasksFinished  int
+	totalTasks     int
+	beanstalk_tube *beanstalk.TubeSet
+	q              *beanstalk.Conn
+	uri            string
+	mid            uint64
+	is_new_host    bool
+	Vm_input       *VMInput
+	HostdbData     []string                     //json strings
+	ctype_map      map[string]map[string]uint64 // a map of component type in each baremetal
+	existing_hosts map[string]bool
 }
 
-func NewExampleScheduler(q string, uri string) *ExampleScheduler {
+func NewExampleScheduler(q *beanstalk.Conn, uri string) *ExampleScheduler {
 	return &ExampleScheduler{
 		tasksLaunched: 0,
 		tasksFinished: 0,
-		q:             q,
 		uri:           uri,
+		q: q,
+		beanstalk_tube: beanstalk.NewTubeSet(q, "mesos"),
 	}
 }
 
@@ -93,12 +98,9 @@ func (sched *ExampleScheduler) GetDataFromHostDB() {
 }
 
 func (sched *ExampleScheduler) DeleteFromQ() {
-	conn, e := beanstalk.Dial("tcp", sched.q)
-	defer conn.Close()
-	if e != nil {
-		log.Fatal(e)
-	}
-	e = conn.Delete(sched.mid)
+	fmt.Println("DELETING", sched.mid)
+	e := sched.q.Delete(sched.mid)
+	fmt.Println(e)
 }
 
 func (sched *ExampleScheduler) UpdateHostDB() {
@@ -140,17 +142,13 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		strb, sched.HostdbData = sched.HostdbData[len(sched.HostdbData)-1], sched.HostdbData[:len(sched.HostdbData)-1]
 		str = []byte(strb)
 	} else {
-		conn, e := beanstalk.Dial("tcp", sched.q)
-		defer conn.Close()
-		if e != nil {
-			log.Fatal(e)
-		}
-		tubeSet := beanstalk.NewTubeSet(conn, "mesos")
-		id, body, err := tubeSet.Reserve(10 * time.Hour)
-		sched.mid = id
+		//tubeSet := beanstalk.NewTubeSet(sched.q, "mesos")
+		id, body, err := sched.beanstalk_tube.Reserve(10 * time.Hour)
+		fmt.Println("GOT ID = ", id)
 		if err != nil {
 			panic(err)
 		}
+		sched.mid = id
 		str, err = b64.StdEncoding.DecodeString(string(body))
 		if err != nil {
 			fmt.Println("GOT ERROR", err)
@@ -158,6 +156,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	}
 
 	var x VMInputJSON
+	x.Baremetal = ""
 	_ = json.Unmarshal(str, &x)
 	//fmt.Printf("Printing THE JSON UNMARSHAL %+v\n", x)
 	cpuval, _ := strconv.ParseFloat(x.Cpu, 64)
@@ -172,7 +171,6 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		baremetal: x.Baremetal,
 	}
 	sched.is_new_host = false
-
 	log.Infoln("PRINTING THE STRUCT %+v", sched.Vm_input)
 
 }
@@ -211,55 +209,95 @@ func (sched *ExampleScheduler) Disconnected(sched.SchedulerDriver) {
 }
 
 func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offers []*mesos.Offer) {
+	var attrib_arbitary_high uint64
+	var chosen_offer *mesos.Offer
+	var bm_for_host string // There is no default bm for new hosts, so we use this string as a placeholder
+
+	log.Infoln("\n\n>>>>>>>>>>>>>>>>>> CALLBACK BEGINS >>>>>>>>>>>>>>>>>>>>>>>>>>")
+	defer log.Infoln(">>>>>>>>>>>>>>>>>> CALLBACK RETURNS  >>>>>>>>>>>>>>>>>>>>>>>>>>\n\n")
 	logOffers(offers)
-	fmt.Println(sched)
+	fmt.Printf("\n\nPrinting the sched at entry: %+v\n\n", sched)
+	fmt.Printf("VM_INPUT: %+v\n", sched.Vm_input)
 	if sched.tasksLaunched == 0 {
 		sched.GetDataFromHostDB() //Be  Idempotent
+		sched.existing_hosts = make(map[string]bool)
 	}
 	//fmt.Println(sched)
 	sched.FetchFromQ()
 	exec := sched.PrepareExecutorInfo()
-	var attrib_arbitary_high uint64
 	attrib_arbitary_high = 100
-	var chosen_offer *mesos.Offer
+	fmt.Println("BAREMETAL=", sched.Vm_input.baremetal)
 
 	var tasks []*mesos.TaskInfo
 	for _, offer := range offers {
 		remainingCpus := getOfferCpu(offer)
 		remainingMems := getOfferMem(offer)
-
-		if sched.Vm_input.cpu <= remainingCpus && sched.Vm_input.mem <= remainingMems {
-			host_ok, vm_on_host := GetAttribVal(offer, sched.Vm_input.baremetal)
-			if vm_on_host == true {
+		gotchosenoffer := false
+		if sched.Vm_input.baremetal == "" {
+			bm_for_host = *offer.Hostname // New hosts from q
+		} else {
+			bm_for_host = sched.Vm_input.baremetal // hosts from file
+			if sched.Vm_input.baremetal == *offer.Hostname {
 				chosen_offer = offer
+				gotchosenoffer = true
 				fmt.Println(">>>>>>>>> VM already present on ", sched.Vm_input.baremetal, " , got the chosen offer")
 				break // thats it, this is it
 			}
-			get_attrib_for_offer := sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type]
+		}
+
+		if sched.Vm_input.cpu <= remainingCpus && sched.Vm_input.mem <= remainingMems && gotchosenoffer == false {
+			host_ok := GetAttribVal(offer)
+			get_attrib_for_offer := sched.ctype_map[bm_for_host][sched.Vm_input.comp_type]
+			log.Infoln("\nATTRIB FOR OFFER:", get_attrib_for_offer, "\n")
 			if (host_ok == true) && (get_attrib_for_offer < attrib_arbitary_high) {
 				attrib_arbitary_high = get_attrib_for_offer
 				chosen_offer = offer
+				gotchosenoffer = true
 				sched.is_new_host = true
+				sched.existing_hosts[sched.Vm_input.hostname] = true
+				if attrib_arbitary_high == 0 {
+					break // why check more hosts ?
+				}
+
 			}
 		}
 	}
 
+	// We need to decline all other offers, so we are presented with it at a later point
+	cv := chosen_offer.Id.GetValue() 
+	for _, offer := range offers {
+		log.Infof("+++++++++++++++  Offer <%v> with cpus=%v mem=%v", offer.Id.GetValue(), getOfferCpu(offer), getOfferMem(offer))
+		ov :=  offer.Id.GetValue() 
+		if strings.EqualFold(cv,ov) {
+			log.Infoln("RETAINED") 
+		} else {
+			log.Infoln("DECLINED") 
+			driver.DeclineOffer(offer.Id,&mesos.Filters{RefuseSeconds: proto.Float64(1)})
+		}
+	}
 	if chosen_offer == nil {
 		fmt.Println("NO OFFER MATCHED REQUIREMENT, RETURNING")
 		sched.is_new_host = false
+		sched.existing_hosts[sched.Vm_input.hostname] = false
 		return
 	}
-	//fmt.Println("\n\n\nMAP VAL\n>>>>>>>>>>>", sched.Vm_input.baremetal, sched.Vm_input.comp_type, sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type], "\n\n\n\n>>>>>>>>>>>>\n")
+	fmt.Println("\n\n\nMAP VAL<<<<<<<<<<<<", bm_for_host, sched.Vm_input.comp_type, sched.ctype_map[bm_for_host][sched.Vm_input.comp_type], ">>>>>>>>>>>>\n")
 
-	if sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type] == 0 { //go wtf
-		if sched.ctype_map  == nil {
-			t1 := make(map[string]uint64) 
-			t1[sched.Vm_input.comp_type] = 0 
+	if sched.ctype_map[bm_for_host][sched.Vm_input.comp_type] == 0 { //go wtf
+		if sched.ctype_map == nil {
+			t1 := make(map[string]uint64)
+			t1[sched.Vm_input.comp_type] = 0
 			sched.ctype_map = make(map[string]map[string]uint64)
-			sched.ctype_map[sched.Vm_input.baremetal] = t1
-		} 
-	} 
-	sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type]++
+			sched.ctype_map[bm_for_host] = t1
+		}
+		if sched.ctype_map[bm_for_host] == nil {
+			sched.ctype_map[bm_for_host] = make(map[string]uint64)
+			sched.ctype_map[bm_for_host][sched.Vm_input.comp_type] = 0
+
+		}
+
+	}
+	sched.ctype_map[bm_for_host][sched.Vm_input.comp_type]++
 	/*
 		fmt.Println("\n\n\nMAP VAL\n>>>>>>>>>>>", sched.ctype_map[sched.Vm_input.baremetal][sched.Vm_input.comp_type], "\n\n\n\n>>>>>>>>>>>>\n")
 		fmt.Println(">>>>>>>>>> CHOSEN OFFER:\n", chosen_offer, "\n<<<<<<<<<<<<<<< CHOSEN OFFER")
@@ -295,6 +333,7 @@ func (sched *ExampleScheduler) StatusUpdate(driver sched.SchedulerDriver, status
 	log.Infoln("Status update: task", status.TaskId.GetValue(), " is in state ", status.State.Enum().String())
 	fmt.Printf("%+v\n", status)
 	fmt.Printf("%+v\n", sched)
+	fmt.Printf("VM_INPUT: %+v\n", sched.Vm_input)
 	sched.DeleteFromQ()
 	if "TASK_RUNNING" == status.State.Enum().String() {
 		fmt.Println(sched.Vm_input.hostname, " has been started Succesfully on ", sched.Vm_input.baremetal, " exiting")

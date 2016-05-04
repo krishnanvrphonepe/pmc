@@ -7,22 +7,15 @@ import (
 	util "github.com/mesos/mesos-go/mesosutil"
 )
 
-func GetAttribVal ( offer *mesos.Offer,  bm string) (bool,bool)  {
+func GetAttribVal ( offer *mesos.Offer) bool  {
 	host_ok := false
-	vm_on_host := false
 	for _, attrib := range offer.Attributes {
 		//fmt.Println("ATTRIB:\n",attrib) 
 		if (*attrib.Name == "vt_enabled") && (*attrib.Scalar.Value == 1) {
 			host_ok = true
 		} 
-		// If VM is already on this host, send this as the offer
-		// This takes care of redundant calls
-
-		if *offer.Hostname == bm { 
-			vm_on_host = true
-		} 
 	}
-	return host_ok,vm_on_host
+	return host_ok
 }
 func getOfferScalar(offer *mesos.Offer, name string) float64 {
 

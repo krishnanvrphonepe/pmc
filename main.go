@@ -28,6 +28,8 @@ import (
 	sched "github.com/mesos/mesos-go/scheduler"
 	"net"
 	"os"
+	"fmt"
+	"github.com/kr/beanstalk"
 )
 
 const (
@@ -83,7 +85,13 @@ func main() {
 
 func CreateAndRunMesosTask(uri string) {
 
-	scheduler := NewExampleScheduler(*qep, uri)
+	beanstalk_conn, e := beanstalk.Dial("tcp", *qep)
+	if e != nil {
+		fmt.Println(">> Beanstalk got error:",e) 
+		os.Exit(1) 
+	}
+		
+	scheduler := NewExampleScheduler(beanstalk_conn, uri)
 
 	// Framework
 	fwinfo := &mesos.FrameworkInfo{
