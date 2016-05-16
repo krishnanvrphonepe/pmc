@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 use Beanstalk::Client;
-use PMC;
+use PMCMesos;
 use Data::Dumper; 
 my $server = '192.168.254.1' ; 
 my $tube = 'dnsmasq' ; 
@@ -14,12 +14,12 @@ for(;;) {
 	print "Sleeping\n"; 
 	sleep 2; 
 
-	my $qdatar = PMC::FetchMsgFromQ($client) ; 
+	my $qdatar = PMCMesos::FetchMsgFromQ($client) ; 
 	my $qdata = $qdatar->{DATA}; 
 	#host=a ip=192.168.254.15 mac=52:54:00:a8:fe:0f cpu=2 mem=2097152 ct=b
 	print Dumper $qdata; 
-	PMC::GenerateNetworkConfig($qdata->{hostname},$qdata->{ip},$qdata->{mac}) ; 
+	PMCMesos::GenerateNetworkConfig($qdata->{hostname},$qdata->{ip},$qdata->{mac}) ; 
 	$qdatar->{JOB}->delete($qdatar->{JOB}->id());
 	print Dumper \%qdata;
-	PMC::UpdateQ($mesos_client,$qdata) ; 
+	PMCMesos::UpdateQ($mesos_client,$qdata) ; 
 }
