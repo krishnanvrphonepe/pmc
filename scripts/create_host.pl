@@ -5,16 +5,27 @@ use strict;
 use Data::Dumper; 
 use PMCMesos; 
 use YAML::Syck;
+use Getopt::Std ;
    
 
+my %qdata_opts; 
 
-my $hostname = shift; 
-my $ct = shift; 
-my $vlan = shift  ; 
-my $q = shift  ; 
-my $size = shift; 
-my $exr = shift; 
-die __FILE__." <hostname> <ct> <vlan> <q> [size] [executor]\n" if !(defined $vlan && defined $hostname && defined $ct && defined $q) ; 
+getopts("Hh:c:v:q:s:e:", \%qdata_opts) ; 
+
+die print_help() if(defined $qdata_opts{H}) ; 
+
+
+my $hostname = $qdata_opts{h}; 
+my $ct = $qdata_opts{c};
+my $vlan = $qdata_opts{v};
+my $q = $qdata_opts{q};
+my $size = $qdata_opts{s}; 
+my $exr = $qdata_opts{e}; 
+
+
+die print_help()  if !(defined $vlan && defined $hostname && defined $ct && defined $q) ; 
+my $check_host_exists = PMCMesos::CheckDNS($hostname) ; 
+die if($check_host_exists) ; 
 my $sizef = PMCMesos::VerifyValidSize($size) ; 
 die "Invalid size : $size\n" if(!$sizef) ;
 my $host_ip = PMCMesos::GetFreeIP($vlan);
@@ -34,3 +45,13 @@ print Dumper \%qdata;
 
 my $client = Beanstalk::Client->new( { server => $q , default_tube => 'dnsmasq', }) or die "$!\n";
 PMCMesos::UpdateQ($client,\%qdata) ; 
+
+
+sub print_help {
+
+	print "\n\t"; 
+	print __FILE__. " -H # This help \n"; 
+	print "\n\t"; 
+	print __FILE__. " -h <hostname> -c <component type> -v <vlan> -q <beanstalk end point> [-s C1M1024] [-e <executor> ]\n\n"; 
+
+}
