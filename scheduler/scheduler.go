@@ -20,16 +20,16 @@ package scheduler
 
 import (
 	b64 "encoding/base64"
+	"encoding/json"
 	"fmt"
 	"github.com/gogo/protobuf/proto"
-	"github.com/kr/beanstalk"
-	"os"
-	"encoding/json"
 	log "github.com/golang/glog"
+	"github.com/kr/beanstalk"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	util "github.com/mesos/mesos-go/mesosutil"
 	sched "github.com/mesos/mesos-go/scheduler"
 	"io/ioutil"
+	"os"
 	//"math"
 	"strconv"
 	"strings"
@@ -143,18 +143,18 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		str = []byte(strb)
 	} else {
 		//tubeSet := beanstalk.NewTubeSet(sched.q, "mesos")
-		id, body, err := sched.beanstalk_tube.Reserve(10 * time.Hour)
-		fmt.Println("GOT ID = ", id, "String:\n",string(body))
+		id, body, err := sched.beanstalk_tube.Reserve(15 * time.Second)
+		fmt.Println("GOT ID = ", id, "String:\n", string(body))
 		if err != nil {
-			panic(err)
+			return
 		}
 		sched.mid = id
-		k := string(body) 
+		k := string(body)
 
 		str, err = b64.StdEncoding.DecodeString(k)
 		if err != nil {
 			fmt.Println("GOT ERROR", err)
-			os.Exit(0) 
+			os.Exit(0)
 		}
 	}
 
@@ -227,7 +227,14 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		sched.existing_hosts = make(map[string]bool)
 	}
 	//fmt.Println(sched)
+
 	sched.FetchFromQ()
+	if sched.Vm_input == nil { // Make sure this is not blocking
+		for _, offer := range offers {
+			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
+		}
+		return
+	}
 	exec := sched.PrepareExecutorInfo()
 	attrib_arbitary_high = 100
 	log.Infoln("BAREMETAL=", sched.Vm_input.baremetal)
@@ -237,7 +244,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		remainingCpus := getOfferCpu(offer)
 		remainingMems := getOfferMem(offer)
 		gotchosenoffer := false
-		log.Infoln("Hostname = ",*offer.Hostname) 
+		log.Infoln("Hostname = ", *offer.Hostname)
 		if sched.Vm_input.baremetal == "" {
 			bm_for_host = *offer.Hostname // New hosts from q
 		} else {
@@ -248,8 +255,8 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 				fmt.Println(">>>>>>>>> VM already present on ", sched.Vm_input.baremetal, " , got the chosen offer")
 				break // thats it, this is it
 			} else {
-				continue 
-			} 
+				continue
+			}
 
 		}
 
@@ -273,10 +280,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	// We need to decline all other offers, so we are presented with it at a later point
 	cv := chosen_offer.Id.GetValue()
 	for _, offer := range offers {
-		log.Infof("+++++++++++++++  Offer <%v> with cpus=%v mem=%v" , offer.Id.GetValue(), getOfferCpu(offer), getOfferMem(offer))
+		log.Infof("+++++++++++++++  Offer <%v> with cpus=%v mem=%v", offer.Id.GetValue(), getOfferCpu(offer), getOfferMem(offer))
 		ov := offer.Id.GetValue()
 		if strings.EqualFold(cv, ov) {
-			log.Infoln("RETAINED",*offer.Hostname)
+			log.Infoln("RETAINED", *offer.Hostname)
 		} else {
 			log.Infoln("DECLINED")
 			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
@@ -334,6 +341,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	driver.LaunchTasks([]*mesos.OfferID{chosen_offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
 	sched.tasksLaunched++
 	sched.Vm_input.baremetal = *chosen_offer.Hostname
+	sched.UpdateHostDB()
 	return
 }
 
@@ -344,8 +352,7 @@ func (sched *ExampleScheduler) StatusUpdate(driver sched.SchedulerDriver, status
 	fmt.Printf("VM_INPUT: %+v\n", sched.Vm_input)
 	sched.DeleteFromQ()
 	if "TASK_RUNNING" == status.State.Enum().String() {
-		fmt.Println(sched.Vm_input.hostname, " has been started Succesfully on ", sched.Vm_input.baremetal, " exiting")
-		sched.UpdateHostDB()
+		//fmt.Println(sched.Vm_input.hostname, " has been started Succesfully on ", sched.Vm_input.baremetal, " exiting")
 		//os.Exit(0)
 	}
 
