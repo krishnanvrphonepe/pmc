@@ -41,13 +41,13 @@ var (
 	mem                         = flag.Int("M", 1024, "Mem")
 	local_pmc_dir               = "/var/local/pmc"
 	cloud_local_ds              = "/usr/bin/cloud-localds"
-	host_image_location         = "/var/lib/libvirt/images"
+	host_image_location         = "/opt/var/lib/libvirt/images"
 	kernel_mesos                = "data/trusty-server-cloudimg-amd64-vmlinuz-generic"
-	kernel                      = "/var/local/pmc/trusty-server-cloudimg-amd64-vmlinuz-generic"
+	kernel                      = "/opt/var/lib/libvirt/images/trusty-server-cloudimg-amd64-vmlinuz-generic"
 	cloud_init_mesos            = "data/cloud-init.goLang"
 	cloud_init                  = "/etc/default/cloud-init.goLang"
 	original_source_image_mesos = "data/trusty.ORIG.img"
-	original_source_image       = "/var/local/trusty.ORIG.img"
+	original_source_image       = "/opt/var/lib/libvirt/images/trusty-server-cloudimg-amd64.img"
 	virt_template_mesos         = "data/PMCLibvirtTemplate.xml"
 	virt_template               = "/etc/default/PMCLibvirtTemplate.xml"
 	AttribSeparator             = ";"
@@ -177,6 +177,12 @@ func main() {
 }
 
 func newVirtExecutorImpl(c *libvirt.VirConnection) *virtExecutorImpl {
+
+
+	 _, err := os.Stat(local_pmc_dir)
+	 if os.IsNotExist(err) { 
+	 	os.Mkdir(local_pmc_dir,0755) 
+	 } 
 	return &virtExecutorImpl{
 		Hostname:       *hostname,
 		MACAddress:     *mac,
