@@ -18,18 +18,23 @@ use strict;
 
 sub GetFreeIP {
 	my $net = shift;
+
 	my $range = GetRange($net)  ;
 	my $ip = new Net::IP ($range) || die;
 	# Loop
-	my $free = 0 ; 
-	my $valid_ip = 0 ; 
+	my $count = 0 ;
+
+	my $valid_ip = 0 ;
+	my $free = 0 ;
 	do {
-		print $ip->ip(), "\n";
-		$valid_ip = $ip->ip() ; 
-		$free = CheckIPFree($ip->ip()) ; 
+		if($count++ > 50) {
+			#print $ip->ip(), "\n";
+			$valid_ip = $ip->ip() ;
+			$free = CheckIPFree($ip->ip()) ;
+		}
 	} while (++$ip && !$free);
-	print "FreeIP = $valid_ip\n"; 
-	return $valid_ip;
+        return $valid_ip; 
+
 }
 
 sub GetRange {
@@ -100,7 +105,7 @@ sub UpdateQ {
 	my $data = shift ;
 	my $json = JSON->new->allow_nonref;
 	my $encoded = encode_base64($json->encode( $data )) ;
-	my $job = $client->put( {},$encoded); 
+	my $job = $client->put( {data => $encoded}) ; 
 }
 
 sub GetMemory {
@@ -138,7 +143,7 @@ sub GenerateNetworkConfig {
 	print F "$ip $hn\n"; 
 	close F; 
 	UpdateDHCPConf($mac,$ip,$hn,'ADD') ; 
-	my $dnsmasq_pid = `cat /var/run/dnsmasq.pid`; 
+	my $dnsmasq_pid = `cat /var/run/dnsmasq/dnsmasq.pid`; 
 	chomp $dnsmasq_pid ;
 	kill HUP => $dnsmasq_pid;
 	print "Completed DNS Restart \n"; 
