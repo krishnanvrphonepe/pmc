@@ -1,7 +1,8 @@
 package scheduler
 
 import (
-//	"fmt"
+	//"fmt"
+//	"os"
 	log "github.com/golang/glog"
 	mesos "github.com/mesos/mesos-go/mesosproto"
 	util "github.com/mesos/mesos-go/mesosutil"

@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"github.com/gogo/protobuf/proto"
 	"github.com/kr/beanstalk"
-	//"os"
+	"os"
 	"encoding/json"
 	log "github.com/golang/glog"
 	mesos "github.com/mesos/mesos-go/mesosproto"
@@ -144,14 +144,17 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	} else {
 		//tubeSet := beanstalk.NewTubeSet(sched.q, "mesos")
 		id, body, err := sched.beanstalk_tube.Reserve(10 * time.Hour)
-		fmt.Println("GOT ID = ", id)
+		fmt.Println("GOT ID = ", id, "String:\n",string(body))
 		if err != nil {
 			panic(err)
 		}
 		sched.mid = id
-		str, err = b64.StdEncoding.DecodeString(string(body))
+		k := string(body) 
+
+		str, err = b64.StdEncoding.DecodeString(k)
 		if err != nil {
 			fmt.Println("GOT ERROR", err)
+			os.Exit(0) 
 		}
 	}
 
@@ -218,7 +221,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	logOffers(offers)
 	log.Infof("\n\nPrinting the sched at entry: %+v\n\n", sched)
 	sched.Vm_input = nil
-	log.Infof("VM_INPUT: %+v\n", sched.Vm_input)
+	//log.Infof("VM_INPUT: %+v\n", sched.Vm_input)
 	if sched.tasksLaunched == 0 {
 		sched.GetDataFromHostDB() //Be  Idempotent
 		sched.existing_hosts = make(map[string]bool)
@@ -234,6 +237,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		remainingCpus := getOfferCpu(offer)
 		remainingMems := getOfferMem(offer)
 		gotchosenoffer := false
+		log.Infoln("Hostname = ",*offer.Hostname) 
 		if sched.Vm_input.baremetal == "" {
 			bm_for_host = *offer.Hostname // New hosts from q
 		} else {
@@ -243,7 +247,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 				gotchosenoffer = true
 				fmt.Println(">>>>>>>>> VM already present on ", sched.Vm_input.baremetal, " , got the chosen offer")
 				break // thats it, this is it
-			}
+			} else {
+				continue 
+			} 
+
 		}
 
 		if sched.Vm_input.cpu <= remainingCpus && sched.Vm_input.mem <= remainingMems && gotchosenoffer == false {
@@ -266,10 +273,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	// We need to decline all other offers, so we are presented with it at a later point
 	cv := chosen_offer.Id.GetValue()
 	for _, offer := range offers {
-		log.Infof("+++++++++++++++  Offer <%v> with cpus=%v mem=%v", offer.Id.GetValue(), getOfferCpu(offer), getOfferMem(offer))
+		log.Infof("+++++++++++++++  Offer <%v> with cpus=%v mem=%v" , offer.Id.GetValue(), getOfferCpu(offer), getOfferMem(offer))
 		ov := offer.Id.GetValue()
 		if strings.EqualFold(cv, ov) {
-			log.Infoln("RETAINED")
+			log.Infoln("RETAINED",*offer.Hostname)
 		} else {
 			log.Infoln("DECLINED")
 			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
