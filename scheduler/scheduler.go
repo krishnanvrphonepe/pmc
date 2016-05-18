@@ -167,6 +167,13 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	//fmt.Printf("Printing THE JSON UNMARSHAL %+v\n", x)
 	cpuval, _ := strconv.ParseFloat(x.Cpu, 64)
 	memval, _ := strconv.ParseFloat(x.Mem, 64)
+	if sched.is_new_host == false && x.Baremetal == "" {
+		fmt.Println("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>Baremetal Not defined in HostDB, exiting" ) 
+		fmt.Printf("%+v\n",x) 
+
+		os.Exit(1) 
+
+	}
 	sched.Vm_input = &VMInput{
 		hostname:  x.Hostname,
 		mac:       x.Mac,
