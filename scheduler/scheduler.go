@@ -109,6 +109,7 @@ func (sched *ExampleScheduler) UpdateHostDB() {
 		fmt.Println(">>>> EXISTING HOST ... No Hostdb update")
 		return
 	}
+	log.Infoln(">>>>>>>>>>>>>>>>>>>>  Writing to hostdb") 
 
 	cpuval := strconv.FormatFloat(sched.Vm_input.cpu, 'f', -1, 32)
 	memval := strconv.FormatFloat(sched.Vm_input.mem, 'f', -1, 32)
@@ -141,6 +142,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		var strb string
 		strb, sched.HostdbData = sched.HostdbData[len(sched.HostdbData)-1], sched.HostdbData[:len(sched.HostdbData)-1]
 		str = []byte(strb)
+		sched.is_new_host = false
 	} else {
 		//tubeSet := beanstalk.NewTubeSet(sched.q, "mesos")
 		id, body, err := sched.beanstalk_tube.Reserve(15 * time.Second)
@@ -156,6 +158,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 			fmt.Println("GOT ERROR", err)
 			os.Exit(0)
 		}
+		sched.is_new_host = true
 	}
 
 	var x VMInputJSON
@@ -173,7 +176,6 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		mem:       memval,
 		baremetal: x.Baremetal,
 	}
-	sched.is_new_host = false
 	log.Infoln("PRINTING THE STRUCT %+v", sched.Vm_input)
 
 }
@@ -268,7 +270,6 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 				attrib_arbitary_high = get_attrib_for_offer
 				chosen_offer = offer
 				gotchosenoffer = true
-				sched.is_new_host = true
 				if attrib_arbitary_high == 0 {
 					break // why check more hosts ?
 				}
@@ -291,7 +292,6 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	}
 	if chosen_offer == nil {
 		fmt.Println("NO OFFER MATCHED REQUIREMENT, RETURNING")
-		sched.is_new_host = false
 		sched.existing_hosts[sched.Vm_input.hostname] = false
 		return
 	}
@@ -338,10 +338,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 
 	tasks = append(tasks, task)
 	log.Infoln("Launching ", len(tasks), "tasks for offer", chosen_offer.Id.GetValue())
+	sched.UpdateHostDB()
 	driver.LaunchTasks([]*mesos.OfferID{chosen_offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
 	sched.tasksLaunched++
 	sched.Vm_input.baremetal = *chosen_offer.Hostname
-	sched.UpdateHostDB()
 	return
 }
 
