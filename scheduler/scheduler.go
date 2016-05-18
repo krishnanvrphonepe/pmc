@@ -167,13 +167,6 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	//fmt.Printf("Printing THE JSON UNMARSHAL %+v\n", x)
 	cpuval, _ := strconv.ParseFloat(x.Cpu, 64)
 	memval, _ := strconv.ParseFloat(x.Mem, 64)
-	if sched.is_new_host == false && x.Baremetal == "" {
-		fmt.Println("\n>>>>>>>>>>>>>>>>>>>>>>>>>>>Baremetal Not defined in HostDB, exiting" ) 
-		fmt.Printf("%+v\n",x) 
-
-		os.Exit(1) 
-
-	}
 	sched.Vm_input = &VMInput{
 		hostname:  x.Hostname,
 		mac:       x.Mac,
@@ -348,10 +341,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 
 	tasks = append(tasks, task)
 	log.Infoln("Launching ", len(tasks), "tasks for offer", chosen_offer.Id.GetValue())
+	sched.Vm_input.baremetal = *chosen_offer.Hostname
 	sched.UpdateHostDB()
 	driver.LaunchTasks([]*mesos.OfferID{chosen_offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
 	sched.tasksLaunched++
-	sched.Vm_input.baremetal = *chosen_offer.Hostname
 	return
 }
 
