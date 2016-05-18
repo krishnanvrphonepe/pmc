@@ -279,6 +279,14 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	}
 
 	// We need to decline all other offers, so we are presented with it at a later point
+	if chosen_offer == nil {
+		fmt.Println("NO OFFER MATCHED REQUIREMENT, RETURNING")
+		sched.existing_hosts[sched.Vm_input.hostname] = false
+		for _, offer := range offers {
+			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
+		}
+		return
+	}
 	cv := chosen_offer.Id.GetValue()
 	for _, offer := range offers {
 		log.Infof("+++++++++++++++  Offer <%v> with cpus=%v mem=%v", offer.Id.GetValue(), getOfferCpu(offer), getOfferMem(offer))
@@ -289,11 +297,6 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 			log.Infoln("DECLINED")
 			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
 		}
-	}
-	if chosen_offer == nil {
-		fmt.Println("NO OFFER MATCHED REQUIREMENT, RETURNING")
-		sched.existing_hosts[sched.Vm_input.hostname] = false
-		return
 	}
 	log.Infoln("MAP VAL<<<<<<<<<<<<", bm_for_host, sched.Vm_input.comp_type, sched.ctype_map[bm_for_host][sched.Vm_input.comp_type], ">>>>>>>>>>>>\n")
 
