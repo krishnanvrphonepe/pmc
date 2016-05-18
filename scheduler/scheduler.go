@@ -186,7 +186,7 @@ func (sched *ExampleScheduler) PrepareExecutorInfo() *mesos.ExecutorInfo {
 			//Executable: proto.Bool(true),
 		},
 	}
-	virt_cmd := "./virtmesos -h " + sched.Vm_input.hostname + " -mac " + sched.Vm_input.mac + " -ct " + sched.Vm_input.comp_type
+	virt_cmd := "./virtmesos -h " + sched.Vm_input.hostname + " -mac " + sched.Vm_input.mac + " -ct " + sched.Vm_input.comp_type + " -C " + fmt.Sprintf("%v",sched.Vm_input.cpu) + " -M " + fmt.Sprintf("%v",sched.Vm_input.mem)
 	fmt.Println("Command to be exec: ", virt_cmd)
 	//id := strconv.Itoa(sched.tasksLaunched)
 	return &mesos.ExecutorInfo{
