@@ -176,7 +176,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		mem:       memval,
 		baremetal: x.Baremetal,
 	}
-	log.Infoln("PRINTING THE STRUCT %+v", sched.Vm_input)
+	log.Infof("PRINTING THE STRUCT %+v", sched.Vm_input)
 
 }
 func (sched *ExampleScheduler) PrepareExecutorInfo() *mesos.ExecutorInfo {
@@ -237,6 +237,14 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		}
 		return
 	}
+	if sched.existing_hosts[sched.Vm_input.hostname] == true {
+		log.Infof("HOST ALREADY EXISTS:\nVM_INPUT:\n %+v\n", sched.Vm_input)
+		for _, offer := range offers {
+			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
+		}
+		return
+	}
+
 	exec := sched.PrepareExecutorInfo()
 	attrib_arbitary_high = 100
 	log.Infoln("BAREMETAL=", sched.Vm_input.baremetal)
@@ -287,6 +295,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		}
 		return
 	}
+	log.Infof(">>>>>>>>>> CHOSEN OFFER:  %v\n\n",chosen_offer) 
 	cv := chosen_offer.Id.GetValue()
 	for _, offer := range offers {
 		log.Infof("+++++++++++++++  Offer <%v> with cpus=%v mem=%v", offer.Id.GetValue(), getOfferCpu(offer), getOfferMem(offer))
@@ -341,6 +350,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 
 	tasks = append(tasks, task)
 	log.Infoln("Launching ", len(tasks), "tasks for offer", chosen_offer.Id.GetValue())
+	fmt.Printf("CHOSEN OFFER: \n%+v\n",chosen_offer) 
 	sched.Vm_input.baremetal = *chosen_offer.Hostname
 	sched.UpdateHostDB()
 	driver.LaunchTasks([]*mesos.OfferID{chosen_offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
