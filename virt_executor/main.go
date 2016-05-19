@@ -26,6 +26,7 @@ import (
 	"github.com/rgbkrk/libvirt-go"
 	"github.com/satori/go.uuid"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/exec"
 	"strconv"
@@ -116,11 +117,11 @@ func (mesosexec *virtExecutor) LaunchTask(driver mesosexec.ExecutorDriver, taskI
 	if vmexists == nil {
 		fmt.Println("VM Already Present ... NOOP")
 		/*
-		runStatus := &mesos.TaskStatus{TaskId: taskInfo.GetTaskId(), State: mesos.TaskState_TASK_FINISHED.Enum()}
-		_, err := driver.SendStatusUpdate(runStatus) // This ensures the resource is not held forever
-		if err != nil {
-			fmt.Println("Got error", err)
-		}
+			runStatus := &mesos.TaskStatus{TaskId: taskInfo.GetTaskId(), State: mesos.TaskState_TASK_FINISHED.Enum()}
+			_, err := driver.SendStatusUpdate(runStatus) // This ensures the resource is not held forever
+			if err != nil {
+				fmt.Println("Got error", err)
+			}
 		*/
 	} else {
 		fmt.Println("Attempting to Create a new VM: ", *hostname)
@@ -178,11 +179,10 @@ func main() {
 
 func newVirtExecutorImpl(c *libvirt.VirConnection) *virtExecutorImpl {
 
-
-	 _, err := os.Stat(local_pmc_dir)
-	 if os.IsNotExist(err) { 
-	 	os.Mkdir(local_pmc_dir,0755) 
-	 } 
+	_, err := os.Stat(local_pmc_dir)
+	if os.IsNotExist(err) {
+		os.Mkdir(local_pmc_dir, 0755)
+	}
 	return &virtExecutorImpl{
 		Hostname:       *hostname,
 		MACAddress:     *mac,
@@ -202,7 +202,22 @@ func newVirtExecutorImpl(c *libvirt.VirConnection) *virtExecutorImpl {
 }
 
 func (vE *virtExecutorImpl) CheckVMExists() error {
+
 	conn := vE.virtconn
+	err_d := checkdomainexists(conn, vE.Hostname)
+	if err_d == nil {
+		return err_d
+	}
+	_, err := net.Dial("tcp", vE.Hostname+":22")
+	if err == nil {
+		fmt.Printf("FATAL: %v: Host is sshable - elsewhere", vE.Hostname)
+		os.Exit(1) 
+
+	}
+	return fmt.Errorf("NOT FOUND: %v", vE.Hostname)
+}
+
+func checkdomainexists(conn *libvirt.VirConnection, h string) error {
 	doms, err := conn.ListAllDomains(libvirt.VIR_CONNECT_LIST_DOMAINS_PERSISTENT)
 	if err != nil {
 		fmt.Println("List Domains:", err)
@@ -211,12 +226,13 @@ func (vE *virtExecutorImpl) CheckVMExists() error {
 	for _, dom := range doms {
 		name, _ := dom.GetName()
 		fmt.Println(name)
-		if name == vE.Hostname {
+		if name == h {
 			return nil
 		}
 	}
-	return fmt.Errorf("NOT FOUND: %v", vE.Hostname)
+	return fmt.Errorf("NOT FOUND: %v", h)
 }
+
 func (vE *virtExecutorImpl) CreateVM() {
 	domxml := vE.GenDomXML()
 	conn := vE.virtconn
