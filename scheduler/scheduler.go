@@ -140,7 +140,8 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	if len(sched.HostdbData) > 0 {
 		//pop
 		var strb string
-		strb, sched.HostdbData = sched.HostdbData[len(sched.HostdbData)-1], sched.HostdbData[:len(sched.HostdbData)-1]
+		//strb, sched.HostdbData = sched.HostdbData[len(sched.HostdbData)-1], sched.HostdbData[:len(sched.HostdbData)-1]
+		strb = sched.HostdbData[len(sched.HostdbData)-1] 
 		str = []byte(strb)
 		sched.is_new_host = false
 	} else {
@@ -242,6 +243,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		for _, offer := range offers {
 			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
 		}
+		sched.DeleteFromQ()
 		return
 	}
 
@@ -363,12 +365,16 @@ func (sched *ExampleScheduler) StatusUpdate(driver sched.SchedulerDriver, status
 	fmt.Printf("%+v\n", status)
 	fmt.Printf("%+v\n", sched)
 	fmt.Printf("VM_INPUT: %+v\n", sched.Vm_input)
-	sched.DeleteFromQ()
 	if "TASK_RUNNING" == status.State.Enum().String() {
-		//fmt.Println(sched.Vm_input.hostname, " has been started Succesfully on ", sched.Vm_input.baremetal, " exiting")
-		//os.Exit(0)
-	}
-
+		// Sometimes an offer with the specific baremetal is never made, so we need to keep retrying
+		// Hence, shift the HostdbData iff the task is in TASK_RUNNING state
+		if len(sched.HostdbData) > 0 {
+			log.Infoln("Shifting Hostdbdata") 
+			sched.HostdbData = sched.HostdbData[:len(sched.HostdbData)-1]
+		}  else {
+			sched.DeleteFromQ()
+		} 
+	} 
 }
 
 func (sched *ExampleScheduler) OfferRescinded(s sched.SchedulerDriver, id *mesos.OfferID) {
