@@ -168,6 +168,12 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	//fmt.Printf("Printing THE JSON UNMARSHAL %+v\n", x)
 	cpuval, _ := strconv.ParseFloat(x.Cpu, 64)
 	memval, _ := strconv.ParseFloat(x.Mem, 64)
+	if  sched.is_new_host == false {
+	// gotta figure this out, this is just interim
+		cpuval = 1 
+		memval = 1
+	}
+
 	sched.Vm_input = &VMInput{
 		hostname:  x.Hostname,
 		mac:       x.Mac,
