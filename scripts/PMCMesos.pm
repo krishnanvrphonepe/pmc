@@ -111,12 +111,12 @@ sub UpdateQ {
 sub GetMemory {
 	my $sz = shift ; 
 	my $mem = $1 if($sz =~ /M(\d+)/) ; 
-	return $mem ;
+	return "$mem" ;
 }
 sub GetCPU {
 	my $sz = shift ; 
 	my $cpu = $1 if($sz =~ /C(\d+)/) ; 
-	return $cpu; 
+	return "$cpu"; 
 }
 sub VerifyValidSize {
 	my $s = shift; 
