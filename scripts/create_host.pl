@@ -30,7 +30,7 @@ my $check_host_exists = PMCMesos::CheckDNS($hostname) ;
 die if($check_host_exists) ; 
 if(defined $bm )  {
 	my @doms = split/\./,$bm ; 
-	if ( !(@doms > 3 && $doms[-1] =~ /^phonepe$/i) )  {
+	if ( !(@doms > 2 && $doms[-2] =~ /^phonepe$/i) )  {
 		die "Baremetal should be name.phonepe.<dom>" 
 	}
 }
