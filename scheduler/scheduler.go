@@ -68,8 +68,8 @@ func NewExampleScheduler(q *beanstalk.Conn, uri string) *ExampleScheduler {
 type VMInput struct {
 	hostname  string
 	mac       string
-	cpu       float64
-	mem       float64
+	cpu       uint
+	mem       uint64
 	executor  string
 	comp_type string
 	baremetal string
@@ -109,10 +109,10 @@ func (sched *ExampleScheduler) UpdateHostDB() {
 		fmt.Println(">>>> EXISTING HOST ... No Hostdb update")
 		return
 	}
-	log.Infoln(">>>>>>>>>>>>>>>>>>>>  Writing to hostdb") 
+	log.Infoln(">>>>>>>>>>>>>>>>>>>>  Writing to hostdb")
 
-	cpuval := strconv.FormatFloat(sched.Vm_input.cpu, 'f', -1, 32)
-	memval := strconv.FormatFloat(sched.Vm_input.mem, 'f', -1, 32)
+	cpuval := fmt.Sprintf("%v", sched.Vm_input.cpu)
+	memval := fmt.Sprintf("%v", sched.Vm_input.mem)
 	v := &VMInputJSON{
 		Hostname:  sched.Vm_input.hostname,
 		Mac:       sched.Vm_input.mac,
@@ -141,7 +141,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		//pop
 		var strb string
 		//strb, sched.HostdbData = sched.HostdbData[len(sched.HostdbData)-1], sched.HostdbData[:len(sched.HostdbData)-1]
-		strb = sched.HostdbData[len(sched.HostdbData)-1] 
+		strb = sched.HostdbData[len(sched.HostdbData)-1]
 		str = []byte(strb)
 		sched.is_new_host = false
 	} else {
@@ -158,6 +158,8 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		if err != nil {
 			fmt.Println("GOT ERROR", err)
 			os.Exit(0)
+		} else {
+			log.Infoln("Printing JSON STR\n", string(str))
 		}
 		sched.is_new_host = true
 	}
@@ -165,12 +167,13 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	var x VMInputJSON
 	x.Baremetal = ""
 	_ = json.Unmarshal(str, &x)
-	//fmt.Printf("Printing THE JSON UNMARSHAL %+v\n", x)
-	cpuval, _ := strconv.ParseFloat(x.Cpu, 64)
-	memval, _ := strconv.ParseFloat(x.Mem, 64)
-	if  sched.is_new_host == false {
-	// gotta figure this out, this is just interim
-		cpuval = 1 
+	fmt.Printf("Printing THE JSON UNMARSHAL %+v\n", x)
+	cpuval, _ := strconv.Atoi(x.Cpu)
+	memval, _ := strconv.ParseUint(x.Mem, 10, 64)
+
+	if sched.is_new_host == false {
+		// gotta figure this out, this is just interim
+		cpuval = 1
 		memval = 1
 	}
 
@@ -179,7 +182,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		mac:       x.Mac,
 		executor:  x.Executor,
 		comp_type: x.Comp_type,
-		cpu:       cpuval,
+		cpu:       uint(cpuval),
 		mem:       memval,
 		baremetal: x.Baremetal,
 	}
@@ -193,7 +196,7 @@ func (sched *ExampleScheduler) PrepareExecutorInfo() *mesos.ExecutorInfo {
 			//Executable: proto.Bool(true),
 		},
 	}
-	virt_cmd := "./virtmesos -h " + sched.Vm_input.hostname + " -mac " + sched.Vm_input.mac + " -ct " + sched.Vm_input.comp_type + " -C " + fmt.Sprintf("%v",sched.Vm_input.cpu) + " -M " + fmt.Sprintf("%v",sched.Vm_input.mem)
+	virt_cmd := "./virtmesos -h " + sched.Vm_input.hostname + " -mac " + sched.Vm_input.mac + " -ct " + sched.Vm_input.comp_type + " -C " + fmt.Sprintf("%v", sched.Vm_input.cpu) + " -M " + fmt.Sprintf("%v", sched.Vm_input.mem)
 	fmt.Println("Command to be exec: ", virt_cmd)
 	//id := strconv.Itoa(sched.tasksLaunched)
 	return &mesos.ExecutorInfo{
@@ -277,8 +280,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 			}
 
 		}
+		log.Infof("CPU Required=%v, Mem Required = %v, RemCPUS = %v, RemMem=%v\n",sched.Vm_input.cpu,sched.Vm_input.mem,uint(remainingCpus),uint64(remainingMems))
 
-		if sched.Vm_input.cpu <= remainingCpus && sched.Vm_input.mem <= remainingMems && gotchosenoffer == false {
+
+		if sched.Vm_input.cpu <= uint(remainingCpus) && sched.Vm_input.mem <= uint64(remainingMems) && gotchosenoffer == false {
 			host_ok := GetAttribVal(offer)
 			get_attrib_for_offer := sched.ctype_map[bm_for_host][sched.Vm_input.comp_type]
 			log.Infoln("\nATTRIB FOR OFFER:", get_attrib_for_offer, "\n")
@@ -303,7 +308,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		}
 		return
 	}
-	log.Infof(">>>>>>>>>> CHOSEN OFFER:  %v\n\n",chosen_offer) 
+	log.Infof(">>>>>>>>>> CHOSEN OFFER:  %v\n\n", chosen_offer)
 	cv := chosen_offer.Id.GetValue()
 	for _, offer := range offers {
 		log.Infof("+++++++++++++++  Offer <%v> with cpus=%v mem=%v", offer.Id.GetValue(), getOfferCpu(offer), getOfferMem(offer))
@@ -350,15 +355,15 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		SlaveId:  chosen_offer.SlaveId,
 		Executor: exec,
 		Resources: []*mesos.Resource{
-			util.NewScalarResource("cpus", sched.Vm_input.cpu),
-			util.NewScalarResource("mem", sched.Vm_input.mem),
+			util.NewScalarResource("cpus", float64(sched.Vm_input.cpu)),
+			util.NewScalarResource("mem", float64(sched.Vm_input.mem)),
 		},
 	}
 	log.Infof("Prepared task: %s with offer %s for launch\n", task.GetName(), chosen_offer.Id.GetValue())
 
 	tasks = append(tasks, task)
 	log.Infoln("Launching ", len(tasks), "tasks for offer", chosen_offer.Id.GetValue())
-	fmt.Printf("CHOSEN OFFER: \n%+v\n",chosen_offer) 
+	fmt.Printf("CHOSEN OFFER: \n%+v\n", chosen_offer)
 	sched.Vm_input.baremetal = *chosen_offer.Hostname
 	sched.UpdateHostDB()
 	driver.LaunchTasks([]*mesos.OfferID{chosen_offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
@@ -375,12 +380,12 @@ func (sched *ExampleScheduler) StatusUpdate(driver sched.SchedulerDriver, status
 		// Sometimes an offer with the specific baremetal is never made, so we need to keep retrying
 		// Hence, shift the HostdbData iff the task is in TASK_RUNNING state
 		if len(sched.HostdbData) > 0 {
-			log.Infoln("Shifting Hostdbdata") 
+			log.Infoln("Shifting Hostdbdata")
 			sched.HostdbData = sched.HostdbData[:len(sched.HostdbData)-1]
-		}  else {
+		} else {
 			sched.DeleteFromQ()
-		} 
-	} 
+		}
+	}
 }
 
 func (sched *ExampleScheduler) OfferRescinded(s sched.SchedulerDriver, id *mesos.OfferID) {

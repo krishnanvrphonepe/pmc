@@ -29,7 +29,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 )
 
@@ -38,8 +37,8 @@ var (
 	mac                         = flag.String("mac", "52:54:00:a8:fe:69", "MAC Address")
 	component_type              = flag.String("ct", "", "Component Type")
 	fqdn                        = flag.String("f", "phonepe.int", "FQDN")
-	cpu                         = flag.Int("C", 1, "VCPUs")
-	mem                         = flag.Int("M", 1024, "Mem")
+	cpu                         = flag.Uint("C", 1, "VCPUs")
+	mem                         = flag.Uint64("M", 1024, "Mem")
 	local_pmc_dir               = "/var/local/pmc"
 	cloud_local_ds              = "/usr/bin/cloud-localds"
 	host_image_location         = "/opt/var/lib/libvirt/images"
@@ -59,8 +58,8 @@ type virtExecutorImpl struct {
 	MACAddress     string
 	ComponentType  string
 	Fqdn           string
-	Cpu            int
-	Mem            int
+	Cpu            uint
+	Mem            uint64
 	Local_pmc_dir  string
 	Cloud_local_ds string
 	HostImgLoc     string
@@ -211,7 +210,7 @@ func (vE *virtExecutorImpl) CheckVMExists() error {
 	_, err := net.Dial("tcp", vE.Hostname+":22")
 	if err == nil {
 		fmt.Printf("FATAL: %v: Host is sshable - elsewhere", vE.Hostname)
-		os.Exit(1) 
+		os.Exit(1)
 
 	}
 	return fmt.Errorf("NOT FOUND: %v", vE.Hostname)
@@ -253,7 +252,7 @@ func (vE *virtExecutorImpl) GenDomXML() string {
 	xml = strings.Replace(xml, "__PMC__UUID__", uuid, 1)
 	mem := getMem(vE.Mem)
 	xml = strings.Replace(xml, "__PMC__MEMORY__", mem, 2)
-	xml = strings.Replace(xml, "__PMC__VCPU__", strconv.Itoa(vE.Cpu), 1)
+	xml = strings.Replace(xml, "__PMC__VCPU__", fmt.Sprintf("%v", vE.Cpu), 1)
 	xml = strings.Replace(xml, "__PMC__KERNEL__", vE.KernelLoc, 1)
 
 	cloud_init_img := vE.GenCloudInitConfig()
@@ -316,9 +315,9 @@ func Removefile(f string) {
 	}
 }
 
-func getMem(mem int) string {
+func getMem(mem uint64) string {
 	m := mem * 1024
-	return strconv.Itoa(m)
+	return fmt.Sprintf("%v", m)
 }
 func GenXMLForDom(virt_template string) string {
 	dat, err := ioutil.ReadFile(virt_template)
