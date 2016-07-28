@@ -226,6 +226,17 @@ func checkdomainexists(conn *libvirt.VirConnection, h string) error {
 		name, _ := dom.GetName()
 		fmt.Println(name)
 		if name == h {
+			if af, auto_err := dom.GetAutostart(); auto_err == nil {
+				if af == false {
+					if sauto_err := dom.SetAutostart(true); sauto_err != nil {
+						fmt.Printf("Failed to set AUTOSTART")
+					} else {
+						fmt.Printf("SUCCESS: set AUTOSTART")
+					}
+				}
+			} else {
+				fmt.Printf("Failed to get AUTOSTART STATUS")
+			}
 			return nil
 		}
 	}
