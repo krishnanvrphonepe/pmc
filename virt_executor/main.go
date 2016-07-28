@@ -243,6 +243,9 @@ func (vE *virtExecutorImpl) CreateVM() {
 		fmt.Printf("Failed to create domain")
 		os.Exit(1)
 	}
+	if auto_err := dom.SetAutostart(true) ; auto_err != nil {
+		fmt.Printf("Failed to set AUTOSTART")
+	}
 }
 
 func (vE *virtExecutorImpl) GenDomXML() string {
