@@ -229,13 +229,13 @@ func checkdomainexists(conn *libvirt.VirConnection, h string) error {
 			if af, auto_err := dom.GetAutostart(); auto_err == nil {
 				if af == false {
 					if sauto_err := dom.SetAutostart(true); sauto_err != nil {
-						fmt.Printf("Failed to set AUTOSTART")
+						fmt.Printf("Failed to set AUTOSTART\n")
 					} else {
-						fmt.Printf("SUCCESS: set AUTOSTART")
+						fmt.Printf("SUCCESS: set AUTOSTART\n")
 					}
 				}
 			} else {
-				fmt.Printf("Failed to get AUTOSTART STATUS")
+				fmt.Printf("Failed to get AUTOSTART STATUS\n")
 			}
 			return nil
 		}
@@ -255,7 +255,7 @@ func (vE *virtExecutorImpl) CreateVM() {
 		os.Exit(1)
 	}
 	if auto_err := dom.SetAutostart(true) ; auto_err != nil {
-		fmt.Printf("Failed to set AUTOSTART")
+		fmt.Printf("Failed to set AUTOSTART\n")
 	}
 }
 
