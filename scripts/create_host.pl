@@ -37,7 +37,7 @@ if(defined $bm )  {
 }
 my $sizef = PMCMesos::VerifyValidSize($size) ; 
 die "Invalid size : $size\n" if(!$sizef) ;
-my $host_ip = PMCMesos::GetFreeIP($vlan) if(!defined $host_ip) ;
+$host_ip = PMCMesos::GetFreeIP($vlan) if(!defined $host_ip) ;
 my $mac = PMCMesos::GenMAC($host_ip) ;
 $size = 'C1M1024' if(!defined $size) ; 
 my %qdata; 
