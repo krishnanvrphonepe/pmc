@@ -10,7 +10,7 @@ use Getopt::Std ;
 
 my %qdata_opts; 
 
-getopts("Hh:c:v:q:s:e:b:i:", \%qdata_opts) ; 
+getopts("Hh:c:v:q:s:e:b:i:o:", \%qdata_opts) ; 
 
 die print_help() if(defined $qdata_opts{H}) ; 
 
@@ -22,6 +22,7 @@ my $q = $qdata_opts{q};
 my $size = $qdata_opts{s}; 
 my $exr = $qdata_opts{e}; 
 my $bm = $qdata_opts{b}; 
+my $osv = $qdata_opts{o}; 
 my $host_ip = $qdata_opts{i}; 
 
 
@@ -40,6 +41,7 @@ my $host_ip = PMCMesos::GetFreeIP($vlan) if(!defined $host_ip) ;
 my $mac = PMCMesos::GenMAC($host_ip) ;
 $size = 'C1M1024' if(!defined $size) ; 
 my %qdata; 
+$osv = 'trusty' if(!defined $osv) ; 
 
 $qdata{hostname} = $hostname ; 
 $qdata{mac} = $mac; 
@@ -49,6 +51,7 @@ $qdata{mem} = PMCMesos::GetMemory($size) ;
 $qdata{comp_type} = $ct ;
 $qdata{executor} = $exr ;
 $qdata{baremetal} = $bm ;
+$qdata{os} = $osv ;
 
 
 print Dumper \%qdata; 
