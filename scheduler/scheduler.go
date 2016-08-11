@@ -68,6 +68,7 @@ func NewExampleScheduler(q *beanstalk.Conn, uri string) *ExampleScheduler {
 type VMInput struct {
 	hostname  string
 	mac       string
+	os        string
 	cpu       uint
 	mem       uint64
 	executor  string
@@ -79,6 +80,7 @@ type VMInputJSON struct {
 	Mac       string `json:"mac"`
 	Cpu       string `json:"cpu"`
 	Mem       string `json:"mem"`
+	OS        string `json:"os"`
 	Executor  string `json:"executor"`
 	Comp_type string `json:"comp_type"`
 	Baremetal string `json:"baremetal"`
@@ -116,6 +118,7 @@ func (sched *ExampleScheduler) UpdateHostDB() {
 	v := &VMInputJSON{
 		Hostname:  sched.Vm_input.hostname,
 		Mac:       sched.Vm_input.mac,
+		OS:        sched.Vm_input.os,
 		Cpu:       cpuval,
 		Mem:       memval,
 		Executor:  sched.Vm_input.executor,
@@ -180,6 +183,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	sched.Vm_input = &VMInput{
 		hostname:  x.Hostname,
 		mac:       x.Mac,
+		os:        x.OS,
 		executor:  x.Executor,
 		comp_type: x.Comp_type,
 		cpu:       uint(cpuval),
@@ -196,7 +200,7 @@ func (sched *ExampleScheduler) PrepareExecutorInfo() *mesos.ExecutorInfo {
 			//Executable: proto.Bool(true),
 		},
 	}
-	virt_cmd := "./virtmesos -h " + sched.Vm_input.hostname + " -mac " + sched.Vm_input.mac + " -ct " + sched.Vm_input.comp_type + " -C " + fmt.Sprintf("%v", sched.Vm_input.cpu) + " -M " + fmt.Sprintf("%v", sched.Vm_input.mem)
+	virt_cmd := "./virtmesos -h " + sched.Vm_input.hostname + " -mac " + sched.Vm_input.mac + " -ct " + sched.Vm_input.comp_type + " -C " + fmt.Sprintf("%v", sched.Vm_input.cpu) + " -M " + fmt.Sprintf("%v", sched.Vm_input.mem) + " -o " + sched.Vm_input.os
 	fmt.Println("Command to be exec: ", virt_cmd)
 	//id := strconv.Itoa(sched.tasksLaunched)
 	return &mesos.ExecutorInfo{
@@ -280,8 +284,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 			}
 
 		}
-		log.Infof("CPU Required=%v, Mem Required = %v, RemCPUS = %v, RemMem=%v\n",sched.Vm_input.cpu,sched.Vm_input.mem,uint(remainingCpus),uint64(remainingMems))
-
+		log.Infof("CPU Required=%v, Mem Required = %v, RemCPUS = %v, RemMem=%v\n", sched.Vm_input.cpu, sched.Vm_input.mem, uint(remainingCpus), uint64(remainingMems))
 
 		if sched.Vm_input.cpu <= uint(remainingCpus) && sched.Vm_input.mem <= uint64(remainingMems) && gotchosenoffer == false {
 			host_ok := GetAttribVal(offer)

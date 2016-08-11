@@ -37,20 +37,23 @@ var (
 	mac                         = flag.String("mac", "52:54:00:a8:fe:69", "MAC Address")
 	component_type              = flag.String("ct", "", "Component Type")
 	fqdn                        = flag.String("f", "phonepe.int", "FQDN")
+	osv                          = flag.String("o", "trusty", "trusty/xenial")
 	cpu                         = flag.Uint("C", 1, "VCPUs")
 	mem                         = flag.Uint64("M", 1024, "Mem")
 	local_pmc_dir               = "/var/local/pmc"
 	cloud_local_ds              = "/usr/bin/cloud-localds"
 	host_image_location         = "/opt/var/lib/libvirt/images"
-	kernel_mesos                = "data/trusty-server-cloudimg-amd64-vmlinuz-generic"
-	kernel                      = "/opt/var/lib/libvirt/images/trusty-server-cloudimg-amd64-vmlinuz-generic"
 	cloud_init_mesos            = "data/cloud-init.goLang"
 	cloud_init                  = "/etc/default/cloud-init.goLang"
-	original_source_image_mesos = "data/trusty.ORIG.img"
-	original_source_image       = "/opt/var/lib/libvirt/images/trusty-server-cloudimg-amd64.img"
 	virt_template_mesos         = "data/PMCLibvirtTemplate.xml"
 	virt_template               = "/etc/default/PMCLibvirtTemplate.xml"
 	AttribSeparator             = ";"
+	initrd_mesos                = "data/__OS_VERSION__-server-cloudimg-amd64-initrd-generic"
+	initrd                      = "/opt/var/lib/libvirt/images/__OS_VERSION__-server-cloudimg-amd64-initrd-generic"
+	kernel_mesos                = "data/__OS_VERSION__-server-cloudimg-amd64-vmlinuz-generic"
+	kernel                      = "/opt/var/lib/libvirt/images/__OS_VERSION__-server-cloudimg-amd64-vmlinuz-generic"
+	original_source_image_mesos = "data/__OS_VERSION__.ORIG.img"
+	original_source_image       = "/opt/var/lib/libvirt/images/__OS_VERSION__-server-cloudimg-amd64.img"
 )
 
 type virtExecutorImpl struct {
@@ -64,6 +67,7 @@ type virtExecutorImpl struct {
 	Cloud_local_ds string
 	HostImgLoc     string
 	KernelLoc      string
+	InitrdLoc      string
 	CloudInitLoc   string
 	OriginalImg    string
 	VirtTemplate   string
@@ -87,6 +91,16 @@ func newVirtExecutor() *virtExecutor {
 
 func init() {
 	flag.Parse()
+
+	// Make sure we get the right values based on the OS version ( trusty/xenial) 
+
+	initrd_mesos = strings.Replace(initrd_mesos, "__OS__VERSION__", *osv, 1)
+	initrd = strings.Replace(initrd, "__OS__VERSION__", *osv, 1)
+	kernel_mesos = strings.Replace(kernel_mesos, "__OS__VERSION__", *osv, 1)
+	kernel = strings.Replace(kernel, "__OS__VERSION__", *osv, 1)
+	original_source_image_mesos = strings.Replace(original_source_image_mesos, "__OS__VERSION__", *osv, 1)
+	original_source_image = strings.Replace(original_source_image, "__OS__VERSION__", *osv, 1)
+
 	r_err := resolvConfignImages()
 	if r_err != nil {
 		fmt.Println("Config and image problem:", r_err)
@@ -182,6 +196,8 @@ func newVirtExecutorImpl(c *libvirt.VirConnection) *virtExecutorImpl {
 	if os.IsNotExist(err) {
 		os.Mkdir(local_pmc_dir, 0755)
 	}
+
+
 	return &virtExecutorImpl{
 		Hostname:       *hostname,
 		MACAddress:     *mac,
@@ -193,6 +209,7 @@ func newVirtExecutorImpl(c *libvirt.VirConnection) *virtExecutorImpl {
 		Cloud_local_ds: cloud_local_ds,
 		HostImgLoc:     host_image_location,
 		KernelLoc:      kernel,
+		InitrdLoc:      initrd,
 		CloudInitLoc:   cloud_init,
 		OriginalImg:    original_source_image,
 		VirtTemplate:   virt_template,
@@ -254,7 +271,7 @@ func (vE *virtExecutorImpl) CreateVM() {
 		fmt.Printf("Failed to create domain")
 		os.Exit(1)
 	}
-	if auto_err := dom.SetAutostart(true) ; auto_err != nil {
+	if auto_err := dom.SetAutostart(true); auto_err != nil {
 		fmt.Printf("Failed to set AUTOSTART\n")
 	}
 }
@@ -268,6 +285,7 @@ func (vE *virtExecutorImpl) GenDomXML() string {
 	xml = strings.Replace(xml, "__PMC__MEMORY__", mem, 2)
 	xml = strings.Replace(xml, "__PMC__VCPU__", fmt.Sprintf("%v", vE.Cpu), 1)
 	xml = strings.Replace(xml, "__PMC__KERNEL__", vE.KernelLoc, 1)
+	xml = strings.Replace(xml, "__PMC__INITRD__", vE.InitrdLoc, 1)
 
 	cloud_init_img := vE.GenCloudInitConfig()
 	xml = strings.Replace(xml, "__PMC__CLOUDINITIMAGE__", cloud_init_img, 1)
@@ -351,6 +369,7 @@ func resolvConfignImages() error {
 	fmt.Println("Running as id", this_id)
 	kvs := map[string]string{
 		kernel_mesos:                kernel,
+		initrd_mesos:                initrd,
 		cloud_init_mesos:            cloud_init,
 		original_source_image_mesos: original_source_image,
 		virt_template_mesos:         virt_template}
