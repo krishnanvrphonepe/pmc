@@ -46,7 +46,7 @@ var (
 	cloud_init_mesos            = "data/cloud-init.goLang"
 	cloud_init                  = "/etc/default/cloud-init.goLang"
 	virt_template_mesos         = "data/PMCLibvirtTemplate.xml"
-	virt_template               = "/etc/default/PMCLibvirtTemplate.xml"
+	virt_template               = "/etc/default/PMCLibvirtTemplate-__OS_VERSION__.xml"
 	AttribSeparator             = ";"
 	initrd_mesos                = "data/__OS_VERSION__-server-cloudimg-amd64-initrd-generic"
 	initrd                      = "/opt/var/lib/libvirt/images/__OS_VERSION__-server-cloudimg-amd64-initrd-generic"
@@ -94,6 +94,7 @@ func init() {
 
 	// Make sure we get the right values based on the OS version ( trusty/xenial) 
 
+	virt_template = strings.Replace(virt_template, "__OS__VERSION__", *osv, 1)
 	initrd_mesos = strings.Replace(initrd_mesos, "__OS__VERSION__", *osv, 1)
 	initrd = strings.Replace(initrd, "__OS__VERSION__", *osv, 1)
 	kernel_mesos = strings.Replace(kernel_mesos, "__OS__VERSION__", *osv, 1)
