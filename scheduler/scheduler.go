@@ -22,6 +22,7 @@ import (
 	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"github.com/gogo/protobuf/proto"
 	log "github.com/golang/glog"
 	"github.com/kr/beanstalk"
@@ -175,9 +176,12 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	memval, _ := strconv.ParseUint(x.Mem, 10, 64)
 
 	if sched.is_new_host == false {
-		// gotta figure this out, this is just interim
-		cpuval = 1
-		memval = 1
+		_, err := net.Dial("tcp", x.Hostname+":22")
+		if err == nil {
+			// gotta figure this out, this is just interim
+			cpuval = 1
+			memval = 1
+		}
 	}
 
 	sched.Vm_input = &VMInput{
