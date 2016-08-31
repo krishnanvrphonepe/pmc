@@ -43,8 +43,8 @@ var (
 	local_pmc_dir               = "/var/local/pmc"
 	cloud_local_ds              = "/usr/bin/cloud-localds"
 	host_image_location         = "/opt/var/lib/libvirt/images"
-	cloud_init_mesos            = "data/cloud-init.goLang"
-	cloud_init                  = "/etc/default/cloud-init.goLang"
+	cloud_init_mesos            = "data/cloud-init.goLang.__OS_VERSION__"
+	cloud_init                  = "/etc/default/cloud-init.goLang.__OS_VERSION__"
 	virt_template_mesos         = "data/PMCLibvirtTemplate.xml"
 	virt_template               = "/etc/default/PMCLibvirtTemplate-__OS_VERSION__.xml"
 	AttribSeparator             = ";"
@@ -93,8 +93,9 @@ func init() {
 	flag.Parse()
 
 	// Make sure we get the right values based on the OS version ( trusty/xenial) 
+	// These are pushed by salt pmc
 
-	fmt.Println("Before",virt_template,initrd_mesos,initrd,kernel_mesos,kernel,original_source_image_mesos,original_source_image) 
+	fmt.Println("Before",virt_template,initrd_mesos,initrd,kernel_mesos,kernel,original_source_image_mesos,original_source_image)
 	virt_template = strings.Replace(virt_template, "__OS_VERSION__", *osv, 1)
 	initrd_mesos = strings.Replace(initrd_mesos, "__OS_VERSION__", *osv, 1)
 	initrd = strings.Replace(initrd, "__OS_VERSION__", *osv, 1)
@@ -102,7 +103,9 @@ func init() {
 	kernel = strings.Replace(kernel, "__OS_VERSION__", *osv, 1)
 	original_source_image_mesos = strings.Replace(original_source_image_mesos, "__OS_VERSION__", *osv, 1)
 	original_source_image = strings.Replace(original_source_image, "__OS_VERSION__", *osv, 1)
-	fmt.Println("After",virt_template,initrd_mesos,initrd,kernel_mesos,kernel,original_source_image_mesos,original_source_image) 
+	cloud_init = strings.Replace(cloud_init, "__OS_VERSION__", *osv, 1)
+	cloud_init_mesos = strings.Replace(cloud_init_mesos, "__OS_VERSION__", *osv, 1)
+	fmt.Println("After",virt_template,initrd_mesos,initrd,kernel_mesos,kernel,original_source_image_mesos,original_source_image,cloud_init,cloud_init_mesos)
 
 	r_err := resolvConfignImages()
 	if r_err != nil {
