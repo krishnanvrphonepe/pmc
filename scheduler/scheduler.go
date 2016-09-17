@@ -22,7 +22,6 @@ import (
 	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net"
 	"github.com/gogo/protobuf/proto"
 	log "github.com/golang/glog"
 	"github.com/kr/beanstalk"
@@ -30,6 +29,7 @@ import (
 	util "github.com/mesos/mesos-go/mesosutil"
 	sched "github.com/mesos/mesos-go/scheduler"
 	"io/ioutil"
+	"net"
 	"os"
 	//"math"
 	"strconv"
@@ -42,27 +42,29 @@ var (
 )
 
 type ExampleScheduler struct {
-	tasksLaunched  int
-	tasksFinished  int
-	totalTasks     int
-	beanstalk_tube *beanstalk.TubeSet
-	q              *beanstalk.Conn
-	uri            string
-	mid            uint64
-	is_new_host    bool
-	Vm_input       *VMInput
-	HostdbData     []string                     //json strings
-	ctype_map      map[string]map[string]uint64 // a map of component type in each baremetal
-	existing_hosts map[string]bool
+	tasksLaunched         int
+	tasksFinished         int
+	totalTasks            int
+	beanstalk_tube        *beanstalk.TubeSet
+	beanstalk_tube_finish *beanstalk.Tube
+	q                     *beanstalk.Conn
+	uri                   string
+	mid                   uint64
+	is_new_host           bool
+	Vm_input              *VMInput
+	HostdbData            []string                     //json strings
+	ctype_map             map[string]map[string]uint64 // a map of component type in each baremetal
+	existing_hosts        map[string]bool
 }
 
 func NewExampleScheduler(q *beanstalk.Conn, uri string) *ExampleScheduler {
 	return &ExampleScheduler{
-		tasksLaunched:  0,
-		tasksFinished:  0,
-		uri:            uri,
-		q:              q,
-		beanstalk_tube: beanstalk.NewTubeSet(q, "mesos"),
+		tasksLaunched:         0,
+		tasksFinished:         0,
+		uri:                   uri,
+		q:                     q,
+		beanstalk_tube:        beanstalk.NewTubeSet(q, "mesos"),
+		beanstalk_tube_finish: &beanstalk.Tube{q, "mesos_finished"},
 	}
 }
 
@@ -106,13 +108,15 @@ func (sched *ExampleScheduler) DeleteFromQ() {
 	fmt.Println(e)
 }
 
-func (sched *ExampleScheduler) UpdateHostDB() {
-
-	if sched.is_new_host == false {
-		fmt.Println(">>>> EXISTING HOST ... No Hostdb update")
-		return
+func (sched *ExampleScheduler) UpdateFinishQ(s string) {
+	id, err := sched.beanstalk_tube_finish.Put([]byte(s), 1, 0, time.Minute)
+	if err != nil {
+		panic(err)
 	}
-	log.Infoln(">>>>>>>>>>>>>>>>>>>>  Writing to hostdb")
+	fmt.Println("job", id)
+}
+
+func (sched *ExampleScheduler) UpdateHostDB() *string {
 
 	cpuval := fmt.Sprintf("%v", sched.Vm_input.cpu)
 	memval := fmt.Sprintf("%v", sched.Vm_input.mem)
@@ -131,10 +135,17 @@ func (sched *ExampleScheduler) UpdateHostDB() {
 	log.Infoln("Printing the struct: %+v\n", v)
 	log.Infoln("Writing out:", string(d))
 	fname := HostDBDir + "/" + sched.Vm_input.hostname
-	err := ioutil.WriteFile(fname, d, 0644)
-	if err != nil {
-		fmt.Println(fname, ": Updattion of HOSTDB FAILED !!!!!!!!!!!!!!!!!")
+	if sched.is_new_host == false {
+		fmt.Println(">>>> EXISTING HOST ... No Hostdb update")
+	} else {
+		log.Infoln(">>>>>>>>>>>>>>>>>>>>  Writing to hostdb")
+		err := ioutil.WriteFile(fname, d, 0644)
+		if err != nil {
+			fmt.Println(fname, ": Updattion of HOSTDB FAILED !!!!!!!!!!!!!!!!!")
+		}
 	}
+	encoded := b64.StdEncoding.EncodeToString([]byte(d))
+	return &encoded
 
 }
 func (sched *ExampleScheduler) FetchFromQ() {
@@ -372,7 +383,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	log.Infoln("Launching ", len(tasks), "tasks for offer", chosen_offer.Id.GetValue())
 	fmt.Printf("CHOSEN OFFER: \n%+v\n", chosen_offer)
 	sched.Vm_input.baremetal = *chosen_offer.Hostname
-	sched.UpdateHostDB()
+	encoded_str := sched.UpdateHostDB()
+	if encoded_str != nil {
+		sched.UpdateFinishQ(*encoded_str)
+	}
 	driver.LaunchTasks([]*mesos.OfferID{chosen_offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
 	sched.tasksLaunched++
 	return
