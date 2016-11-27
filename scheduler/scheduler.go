@@ -77,6 +77,7 @@ type VMInput struct {
 	executor  string
 	comp_type string
 	baremetal string
+	maxc      int
 }
 type VMInputJSON struct {
 	Hostname  string `json:"hostname"`
@@ -87,6 +88,7 @@ type VMInputJSON struct {
 	Executor  string `json:"executor"`
 	Comp_type string `json:"comp_type"`
 	Baremetal string `json:"baremetal"`
+	Maxc      string `json:"maxc"`
 }
 
 func (sched *ExampleScheduler) GetDataFromHostDB() {
@@ -104,8 +106,12 @@ func (sched *ExampleScheduler) GetDataFromHostDB() {
 
 func (sched *ExampleScheduler) DeleteFromQ() {
 	fmt.Println("DELETING", sched.mid)
-	e := sched.q.Delete(sched.mid)
-	fmt.Println(e)
+	sched.q.Delete(sched.mid)
+}
+
+func (sched *ExampleScheduler) ReleaseFromQ() {
+	fmt.Println("Releasing", sched.mid)
+	sched.q.Release(sched.mid,10,5 * time.Second)
 }
 
 func (sched *ExampleScheduler) UpdateFinishQ(s string) {
@@ -185,6 +191,10 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	fmt.Printf("Printing THE JSON UNMARSHAL %+v\n", x)
 	cpuval, _ := strconv.Atoi(x.Cpu)
 	memval, _ := strconv.ParseUint(x.Mem, 10, 64)
+	if x.Maxc == "" {
+		x.Maxc = "1"
+	}
+	maxcval,_ := strconv.Atoi(x.Maxc)
 
 	if sched.is_new_host == false {
 		_, err := net.Dial("tcp", x.Hostname+":22")
@@ -204,6 +214,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		cpu:       uint(cpuval),
 		mem:       memval,
 		baremetal: x.Baremetal,
+		maxc: maxcval,
 	}
 	log.Infof("PRINTING THE STRUCT %+v", sched.Vm_input)
 
@@ -305,7 +316,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 			host_ok := GetAttribVal(offer)
 			get_attrib_for_offer := sched.ctype_map[bm_for_host][sched.Vm_input.comp_type]
 			log.Infoln("\nATTRIB FOR OFFER:", get_attrib_for_offer, "\n")
-			if (host_ok == true) && (get_attrib_for_offer < attrib_arbitary_high) {
+			if (host_ok == true) && (get_attrib_for_offer < attrib_arbitary_high) && (get_attrib_for_offer < uint64(sched.Vm_input.maxc)) {
 				attrib_arbitary_high = get_attrib_for_offer
 				chosen_offer = offer
 				gotchosenoffer = true
@@ -319,7 +330,8 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 
 	// We need to decline all other offers, so we are presented with it at a later point
 	if chosen_offer == nil {
-		fmt.Println("NO OFFER MATCHED REQUIREMENT, RETURNING")
+		log.Infof("UNABLE TO GET A VALID OFFER:\nVM_INPUT:\n %+v\n", sched.Vm_input)
+		sched.ReleaseFromQ()
 		sched.existing_hosts[sched.Vm_input.hostname] = false
 		for _, offer := range offers {
 			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
@@ -387,7 +399,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	if encoded_str != nil {
 		sched.UpdateFinishQ(*encoded_str)
 	}
-	driver.LaunchTasks([]*mesos.OfferID{chosen_offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
+	driver.LaunchTasks([]*mesos.OfferID{chosen_offer.Id}, tasks, &mesos.Filters{RefuseSeconds: proto.Float64(0)})
 	sched.tasksLaunched++
 	return
 }
