@@ -111,7 +111,7 @@ func (sched *ExampleScheduler) DeleteFromQ() {
 
 func (sched *ExampleScheduler) ReleaseFromQ() {
 	fmt.Println("Releasing", sched.mid)
-	sched.q.Release(sched.mid,10,5 * time.Second)
+	sched.q.Release(sched.mid, 10, 5*time.Second)
 }
 
 func (sched *ExampleScheduler) UpdateFinishQ(s string) {
@@ -194,7 +194,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 	if x.Maxc == "" {
 		x.Maxc = "1"
 	}
-	maxcval,_ := strconv.Atoi(x.Maxc)
+	maxcval, _ := strconv.Atoi(x.Maxc)
 
 	if sched.is_new_host == false {
 		_, err := net.Dial("tcp", x.Hostname+":22")
@@ -214,7 +214,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		cpu:       uint(cpuval),
 		mem:       memval,
 		baremetal: x.Baremetal,
-		maxc: maxcval,
+		maxc:      maxcval,
 	}
 	log.Infof("PRINTING THE STRUCT %+v", sched.Vm_input)
 
