@@ -68,6 +68,12 @@ func NewExampleScheduler(q *beanstalk.Conn, uri string) *ExampleScheduler {
 	}
 }
 
+const (
+	FIRST_FIT    = "first_fit"
+	BEST_FIT     = "best_fit"
+	MIN_COMP_FIT = "min_comp_fit"
+)
+
 type VMInput struct {
 	hostname  string
 	mac       string
@@ -78,6 +84,7 @@ type VMInput struct {
 	comp_type string
 	baremetal string
 	maxc      int
+	placement string
 }
 type VMInputJSON struct {
 	Hostname  string `json:"hostname"`
@@ -89,6 +96,7 @@ type VMInputJSON struct {
 	Comp_type string `json:"comp_type"`
 	Baremetal string `json:"baremetal"`
 	Maxc      string `json:"maxc"`
+	Placement string `json:"placement"`
 }
 
 func (sched *ExampleScheduler) GetDataFromHostDB() {
@@ -135,6 +143,7 @@ func (sched *ExampleScheduler) UpdateHostDB() *string {
 		Executor:  sched.Vm_input.executor,
 		Comp_type: sched.Vm_input.comp_type,
 		Baremetal: sched.Vm_input.baremetal,
+		Placement: sched.Vm_input.placement,
 	}
 
 	d, _ := json.Marshal(v)
@@ -195,6 +204,9 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		x.Maxc = "1"
 	}
 	maxcval, _ := strconv.Atoi(x.Maxc)
+	if x.Placement == "" {
+		x.Placement = MIN_COMP_FIT
+	}
 
 	if sched.is_new_host == false {
 		_, err := net.Dial("tcp", x.Hostname+":22")
@@ -215,6 +227,7 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		mem:       memval,
 		baremetal: x.Baremetal,
 		maxc:      maxcval,
+		placement: x.Placement,
 	}
 	log.Infof("PRINTING THE STRUCT %+v", sched.Vm_input)
 
@@ -253,44 +266,11 @@ func (sched *ExampleScheduler) Disconnected(sched.SchedulerDriver) {
 	log.Infoln("Scheduler Disconnected")
 }
 
-func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offers []*mesos.Offer) {
-	var attrib_arbitary_high uint64
+func (sched *ExampleScheduler) MinCompFitPlacement(offers []*mesos.Offer) *mesos.Offer {
 	var chosen_offer *mesos.Offer
-	var bm_for_host string // There is no default bm for new hosts, so we use this string as a placeholder
-
-	log.Infoln("\n\n>>>>>>>>>>>>>>>>>> CALLBACK BEGINS >>>>>>>>>>>>>>>>>>>>>>>>>>")
-	defer log.Infoln(">>>>>>>>>>>>>>>>>> CALLBACK RETURNS  >>>>>>>>>>>>>>>>>>>>>>>>>>\n\n")
-	logOffers(offers)
-	log.Infof("\n\nPrinting the sched at entry: %+v\n\n", sched)
-	sched.Vm_input = nil
-	//log.Infof("VM_INPUT: %+v\n", sched.Vm_input)
-	if sched.tasksLaunched == 0 {
-		sched.GetDataFromHostDB() //Be  Idempotent
-		sched.existing_hosts = make(map[string]bool)
-	}
-	//fmt.Println(sched)
-
-	sched.FetchFromQ()
-	if sched.Vm_input == nil { // Make sure this is not blocking
-		for _, offer := range offers {
-			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
-		}
-		return
-	}
-	if sched.existing_hosts[sched.Vm_input.hostname] == true {
-		log.Infof("HOST ALREADY EXISTS:\nVM_INPUT:\n %+v\n", sched.Vm_input)
-		for _, offer := range offers {
-			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
-		}
-		sched.DeleteFromQ()
-		return
-	}
-
-	exec := sched.PrepareExecutorInfo()
+	var attrib_arbitary_high uint64
+	var bm_for_host string
 	attrib_arbitary_high = 100
-	log.Infoln("BAREMETAL=", sched.Vm_input.baremetal)
-
-	var tasks []*mesos.TaskInfo
 	for _, offer := range offers {
 		remainingCpus := getOfferCpu(offer)
 		remainingMems := getOfferMem(offer)
@@ -327,6 +307,151 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 			}
 		}
 	}
+	return chosen_offer
+}
+
+func (sched *ExampleScheduler) FirstFitPlacement(offers []*mesos.Offer) *mesos.Offer {
+	var chosen_offer *mesos.Offer
+	var bm_for_host string
+	var attrib_arbitary_high uint64
+	attrib_arbitary_high = 100
+	for _, offer := range offers {
+		remainingCpus := getOfferCpu(offer)
+		remainingMems := getOfferMem(offer)
+		gotchosenoffer := false
+		log.Infoln("Hostname = ", *offer.Hostname)
+		if sched.Vm_input.baremetal == "" {
+			bm_for_host = *offer.Hostname // New hosts from q
+		} else {
+			bm_for_host = sched.Vm_input.baremetal // hosts from file
+			if sched.Vm_input.baremetal == *offer.Hostname {
+				chosen_offer = offer
+				gotchosenoffer = true
+				fmt.Println(">>>>>>>>> VM already present on ", sched.Vm_input.baremetal, " , got the chosen offer")
+				break // thats it, this is it
+			} else {
+				continue
+			}
+
+		}
+		log.Infof("CPU Required=%v, Mem Required = %v, RemCPUS = %v, RemMem=%v\n", sched.Vm_input.cpu, sched.Vm_input.mem, uint(remainingCpus), uint64(remainingMems))
+
+		if sched.Vm_input.cpu <= uint(remainingCpus) && sched.Vm_input.mem <= uint64(remainingMems) && gotchosenoffer == false {
+			host_ok := GetAttribVal(offer)
+			get_attrib_for_offer := sched.ctype_map[bm_for_host][sched.Vm_input.comp_type]
+			log.Infoln("\nATTRIB FOR OFFER:", get_attrib_for_offer, "\n")
+			if (host_ok == true) && (get_attrib_for_offer < attrib_arbitary_high) && (get_attrib_for_offer < uint64(sched.Vm_input.maxc)) {
+				attrib_arbitary_high = get_attrib_for_offer
+				chosen_offer = offer
+				gotchosenoffer = true
+				break
+			}
+		}
+	}
+	return chosen_offer
+}
+
+func (sched *ExampleScheduler) BestFitPlacement(offers []*mesos.Offer) *mesos.Offer {
+	var chosen_offer *mesos.Offer
+	var bm_for_host string
+	cpu_weight := 1        // which ever has min cpu left
+	mem_weight := 1        // which ever has min mem left
+	comp_type_weight := -1 // which ever has max diff between maxc and existing_comp_type
+	attrib_low_weight := -1000
+	for _, offer := range offers {
+		remainingCpus := getOfferCpu(offer)
+		remainingMems := getOfferMem(offer)
+		gotchosenoffer := false
+		log.Infoln("Hostname = ", *offer.Hostname)
+		if sched.Vm_input.baremetal == "" {
+			bm_for_host = *offer.Hostname // New hosts from q
+		} else {
+			bm_for_host = sched.Vm_input.baremetal // hosts from file
+			if sched.Vm_input.baremetal == *offer.Hostname {
+				chosen_offer = offer
+				gotchosenoffer = true
+				fmt.Println(">>>>>>>>> VM already present on ", sched.Vm_input.baremetal, " , got the chosen offer")
+				break // thats it, this is it
+			} else {
+				continue
+			}
+
+		}
+		log.Infof("CPU Required=%v, Mem Required = %v, RemCPUS = %v, RemMem=%v\n", sched.Vm_input.cpu, sched.Vm_input.mem, uint(remainingCpus), uint64(remainingMems))
+
+		if sched.Vm_input.cpu <= uint(remainingCpus) && sched.Vm_input.mem <= uint64(remainingMems) && gotchosenoffer == false {
+			host_ok := GetAttribVal(offer)
+			get_attrib_for_offer := sched.ctype_map[bm_for_host][sched.Vm_input.comp_type]
+			log.Infoln("\nATTRIB FOR OFFER:", get_attrib_for_offer, "\n")
+			if (host_ok == true) && (get_attrib_for_offer < uint64(sched.Vm_input.maxc)) {
+				cpu_diff := int(remainingCpus) - int(sched.Vm_input.cpu)
+				mem_diff := int(remainingMems) - int(sched.Vm_input.mem)
+				comp_type_diff := int(sched.Vm_input.maxc) - int(get_attrib_for_offer)
+				total_weight := (cpu_diff * cpu_weight) + (mem_diff * mem_weight) + (comp_type_diff * comp_type_weight)
+				if attrib_low_weight == -1000 { // first match
+					attrib_low_weight = total_weight
+					chosen_offer = offer
+					gotchosenoffer = true
+				} else if total_weight < attrib_low_weight {
+					attrib_low_weight = total_weight
+					chosen_offer = offer
+					gotchosenoffer = true
+				}
+			}
+		}
+	}
+	return chosen_offer
+}
+
+func (sched *ExampleScheduler) GetOffer(offers []*mesos.Offer) *mesos.Offer {
+	var return_offer *mesos.Offer
+	if sched.Vm_input.placement == FIRST_FIT {
+		return_offer = sched.FirstFitPlacement(offers)
+	} else if sched.Vm_input.placement == BEST_FIT {
+		return_offer = sched.BestFitPlacement(offers)
+	} else if sched.Vm_input.placement == MIN_COMP_FIT {
+		return_offer = sched.MinCompFitPlacement(offers)
+	}
+	return return_offer
+}
+
+func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offers []*mesos.Offer) {
+	var chosen_offer *mesos.Offer
+	var bm_for_host string // There is no default bm for new hosts, so we use this string as a placeholder
+
+	log.Infoln("\n\n>>>>>>>>>>>>>>>>>> CALLBACK BEGINS >>>>>>>>>>>>>>>>>>>>>>>>>>")
+	defer log.Infoln(">>>>>>>>>>>>>>>>>> CALLBACK RETURNS  >>>>>>>>>>>>>>>>>>>>>>>>>>\n\n")
+	logOffers(offers)
+	log.Infof("\n\nPrinting the sched at entry: %+v\n\n", sched)
+	sched.Vm_input = nil
+	//log.Infof("VM_INPUT: %+v\n", sched.Vm_input)
+	if sched.tasksLaunched == 0 {
+		sched.GetDataFromHostDB() //Be  Idempotent
+		sched.existing_hosts = make(map[string]bool)
+	}
+	//fmt.Println(sched)
+
+	sched.FetchFromQ()
+	if sched.Vm_input == nil { // Make sure this is not blocking
+		for _, offer := range offers {
+			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
+		}
+		return
+	}
+	if sched.existing_hosts[sched.Vm_input.hostname] == true {
+		log.Infof("HOST ALREADY EXISTS:\nVM_INPUT:\n %+v\n", sched.Vm_input)
+		for _, offer := range offers {
+			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
+		}
+		sched.DeleteFromQ()
+		return
+	}
+
+	exec := sched.PrepareExecutorInfo()
+	log.Infoln("BAREMETAL=", sched.Vm_input.baremetal)
+
+	var tasks []*mesos.TaskInfo
+	chosen_offer = sched.GetOffer(offers)
 
 	// We need to decline all other offers, so we are presented with it at a later point
 	if chosen_offer == nil {
@@ -338,6 +463,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		}
 		return
 	}
+	bm_for_host = *chosen_offer.Hostname
 	log.Infof(">>>>>>>>>> CHOSEN OFFER:  %v\n\n", chosen_offer)
 	cv := chosen_offer.Id.GetValue()
 	for _, offer := range offers {
