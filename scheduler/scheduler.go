@@ -97,8 +97,41 @@ func (sched *ExampleScheduler) GetDataFromHostDB() {
 	for _, f := range files {
 		fn := HostDBDir + "/" + f.Name()
 		data, _ := ioutil.ReadFile(fn)
-		if len(data) > 10 { // Eliminate . files and other crappy files
+		if len(data) < 10 {
+			continue
+		}
+		hname := f.Name()
+		log.Infoln(" Checking SSH", hname)
+		_, herr := net.Dial("tcp", hname+":22")
+		if herr != nil {
 			x = append(x, string(data))
+		} else {
+			// At this point, verify if the host is already present, if it is then bail out
+
+			log.Infoln( ": Host is already SSHABLE - Moving on")
+			var x VMInputJSON
+			_ = json.Unmarshal(data, &x)
+			comp_type := x.Comp_type
+			bm_for_host := x.Baremetal
+			//fmt.Printf("Printing THE JSON UNMARSHAL %+v\n", x)
+			// Poluplating stats
+			if sched.ctype_map[bm_for_host][comp_type] == 0 { //go wtf
+				if sched.ctype_map == nil {
+					t1 := make(map[string]uint64)
+					t1[comp_type] = 0
+					sched.ctype_map = make(map[string]map[string]uint64)
+					sched.ctype_map[bm_for_host] = t1
+				}
+				if sched.ctype_map[bm_for_host] == nil {
+					sched.ctype_map[bm_for_host] = make(map[string]uint64)
+					sched.ctype_map[bm_for_host][comp_type] = 0
+
+				}
+
+			}
+			sched.ctype_map[bm_for_host][comp_type]++
+			sched.existing_hosts = make(map[string]bool)
+			sched.existing_hosts[hname] = true
 		}
 	}
 	sched.HostdbData = x
@@ -200,8 +233,8 @@ func (sched *ExampleScheduler) FetchFromQ() {
 		_, err := net.Dial("tcp", x.Hostname+":22")
 		if err == nil {
 			// gotta figure this out, this is just interim
-			cpuval = 1
-			memval = 1
+			// cpuval = 1
+			// memval = 1
 		}
 	}
 
@@ -265,8 +298,9 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	sched.Vm_input = nil
 	//log.Infof("VM_INPUT: %+v\n", sched.Vm_input)
 	if sched.tasksLaunched == 0 {
+
+		log.Infoln("FETCHING DATA FROM HOSTDB")
 		sched.GetDataFromHostDB() //Be  Idempotent
-		sched.existing_hosts = make(map[string]bool)
 	}
 	//fmt.Println(sched)
 
@@ -288,7 +322,6 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 
 	exec := sched.PrepareExecutorInfo()
 	attrib_arbitary_high = 100
-	log.Infoln("BAREMETAL=", sched.Vm_input.baremetal)
 
 	var tasks []*mesos.TaskInfo
 	for _, offer := range offers {
@@ -298,8 +331,10 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		log.Infoln("Hostname = ", *offer.Hostname)
 		if sched.Vm_input.baremetal == "" {
 			bm_for_host = *offer.Hostname // New hosts from q
+			log.Infoln("ASSIGNING BAREMETAL=", sched.Vm_input.baremetal)
 		} else {
 			bm_for_host = sched.Vm_input.baremetal // hosts from file
+			log.Infoln("ALREADY PRESENT BAREMETAL=", sched.Vm_input.baremetal)
 			if sched.Vm_input.baremetal == *offer.Hostname {
 				chosen_offer = offer
 				gotchosenoffer = true
@@ -375,6 +410,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 		log.Infoln("%+v\n%+v\n", sched, sched.Vm_input)
 		log.Infoln("\n>>>>>>>>>>>>>>>>>>> PRINT SCHEDULER INFO >>>>>>>>>>>>>>>>>>>>>>>>")
 	*/
+
 	taskId := &mesos.TaskID{
 		Value: proto.String(strconv.Itoa(sched.tasksLaunched)),
 	}
