@@ -94,6 +94,9 @@ type VMInputJSON struct {
 func (sched *ExampleScheduler) GetDataFromHostDB() {
 	files, _ := ioutil.ReadDir(HostDBDir)
 	var x []string
+	sect := 2 
+	timeOut := time.Duration(sect) * time.Second
+
 	for _, f := range files {
 		fn := HostDBDir + "/" + f.Name()
 		data, _ := ioutil.ReadFile(fn)
@@ -102,7 +105,7 @@ func (sched *ExampleScheduler) GetDataFromHostDB() {
 		}
 		hname := f.Name()
 		log.Infoln(" Checking SSH", hname)
-		_, herr := net.Dial("tcp", hname+":22")
+		_, herr := net.DialTimeout("tcp", hname+":22",timeOut)
 		if herr != nil {
 			x = append(x, string(data))
 		} else {
