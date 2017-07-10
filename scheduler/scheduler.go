@@ -297,7 +297,7 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	log.Infof("\n\nPrinting the sched at entry: %+v\n\n", sched)
 	sched.Vm_input = nil
 	//log.Infof("VM_INPUT: %+v\n", sched.Vm_input)
-	if sched.tasksLaunched == 0 {
+	if sched.tasksLaunched == 0 && len(sched.existing_hosts) == 0 {
 
 		log.Infoln("FETCHING DATA FROM HOSTDB")
 		sched.GetDataFromHostDB() //Be  Idempotent
