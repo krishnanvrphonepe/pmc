@@ -61,37 +61,18 @@ func main() {
 	uri = ServeExecutorArtifact(*address, *artifactPort, *executorPath)
 	CreateAndRunMesosTask(uri)
 
-	/*
-		// Handle Cmd Line args if Any
-		//vm_input := NewVMInputter(*hostname, *mac, *mem, *cpu, *executorPath, *comp_type)
-		if vm_input != nil {
-			vm_input.CreateAndRunMesosTask(uri)
-		} else {
-			fmt.Println("This is going to be a noop", vm_input)
-		}
-		if *qep != "" {
-			fmt.Println("QEP=", *qep)
-			for { // endless loop
-				vm_inputq,id := FetchFromQ(*qep)
-				fmt.Println("ID=",id)
-				if vm_inputq != nil {
-					vm_inputq.CreateAndRunMesosTask(uri)
-					//DeleteFromQ(*qep,id)
-				}
-			}
-		}
-	*/
 }
 
 func CreateAndRunMesosTask(uri string) {
 
 	beanstalk_conn, e := beanstalk.Dial("tcp", *qep)
 	if e != nil {
-		fmt.Println(">> Beanstalk got error:",e) 
-		os.Exit(1) 
+		fmt.Println(">> Beanstalk got error:",e)
+		os.Exit(1)
 	}
-		
 	scheduler := NewExampleScheduler(beanstalk_conn, uri)
+	log.Infoln("FETCHING DATA FROM HOSTDB")
+	scheduler.GetDataFromHostDB() //Be  Idempotent
 
 	// Framework
 	fwinfo := &mesos.FrameworkInfo{

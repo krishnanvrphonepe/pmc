@@ -96,6 +96,7 @@ func (sched *ExampleScheduler) GetDataFromHostDB() {
 	var x []string
 	sect := 2
 	timeOut := time.Duration(sect) * time.Second
+	sched.existing_hosts = make(map[string]bool)
 
 	for _, f := range files {
 		fn := HostDBDir + "/" + f.Name()
@@ -134,7 +135,6 @@ func (sched *ExampleScheduler) GetDataFromHostDB() {
 
 			}
 			sched.ctype_map[bm_for_host][comp_type]++
-			sched.existing_hosts = make(map[string]bool)
 			sched.existing_hosts[hname] = true
 		}
 	}
@@ -300,17 +300,6 @@ func (sched *ExampleScheduler) ResourceOffers(driver sched.SchedulerDriver, offe
 	logOffers(offers)
 	log.Infof("\n\nPrinting the sched at entry: %+v\n\n", sched)
 	sched.Vm_input = nil
-	//log.Infof("VM_INPUT: %+v\n", sched.Vm_input)
-	if sched.tasksLaunched == 0 && len(sched.existing_hosts) == 0 {
-
-		log.Infoln("FETCHING DATA FROM HOSTDB")
-		sched.GetDataFromHostDB() //Be  Idempotent
-		for _, offer := range offers { //There is a race
-			driver.DeclineOffer(offer.Id, &mesos.Filters{RefuseSeconds: proto.Float64(1)})
-		}
-		return
-	}
-	//fmt.Println(sched)
 
 	sched.FetchFromQ()
 	if sched.Vm_input == nil { // Make sure this is not blocking
