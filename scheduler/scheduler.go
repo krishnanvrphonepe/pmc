@@ -451,7 +451,9 @@ func (sched *ExampleScheduler) StatusUpdate(driver sched.SchedulerDriver, status
 		} else {
 			sched.DeleteFromQ()
 		}
-	}
+	} else if "TASK_FAILED" == status.State.Enum().String() {
+	      delete  (sched.existing_hosts,sched.Vm_input.hostname) ; 
+	} 
 }
 
 func (sched *ExampleScheduler) OfferRescinded(s sched.SchedulerDriver, id *mesos.OfferID) {
